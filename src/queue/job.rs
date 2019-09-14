@@ -3,11 +3,37 @@ use std::fs::{File, create_dir_all};
 use std::thread;
 use std::process::{Command, Stdio};
 use std::convert::From;
+use serde::Serialize;
+use serde_json::to_string as to_json_string;
+use reqwest::Client;
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use super::{ExecutionStatus, QueueService};
+use crate::config::Particle;
+use super::{ExecutionStatus, QueueService, QueueItem};
+
+#[derive(Serialize, Debug, Clone)]
+pub struct QueueItemData {
+    /// A random system-generated execution identifier.
+    pub id: String,
+
+    pub particle: String,
+
+    /// Current status of the execution
+    #[serde(flatten)]
+    pub status: ExecutionStatus,
+}
+
+impl From<QueueItem> for QueueItemData {
+	fn from(queue_item: QueueItem) -> Self {
+		Self {
+			id: queue_item.id,
+			particle: queue_item.particle,
+			status: queue_item.status.clone(),
+		}
+	}
+}
 
 const SUCCESS_EXIT_CODE: i32 = 0;
 
@@ -46,6 +72,8 @@ impl JobRunner for CommandRunner {
 								error!("Unable to update status of item {}. {}", &item.id, error);
 							}
 
+							call_webhooks(&particle, &item);
+
 							let execution_dir = format!("{}/jobs/{}", &queue_service.config.data_dir, &item.id);
 
 							match create_dir_all(&execution_dir) {
@@ -81,7 +109,6 @@ impl JobRunner for CommandRunner {
 										command.env(key, value);
 									}
 
-									let particle = &queue_service.particle;
 									if let Some(working_dir) = &particle.working_dir {
 										command.current_dir(working_dir.to_owned());
 									};
@@ -135,6 +162,8 @@ impl JobRunner for CommandRunner {
 								Err(_) => error!("Execution {} failed. Unable to create log dir. Please check permissions.", &item.id),
 							}
 
+							call_webhooks(&particle, &item);
+
 							// TODO Do we need to sleep?
 							// thread::sleep(time::Duration::from_millis(100));
 						},
@@ -151,3 +180,25 @@ impl JobRunner for CommandRunner {
 
 	}
 }
+
+fn call_webhooks(particle: &Particle, item: &QueueItem) {
+	if let Some(webhooks) = &particle.webhooks {
+		let client = Client::new();
+		match to_json_string(&QueueItemData::from(item.clone())) {
+			Ok(json_data) =>
+				for webhook in webhooks.iter() {
+					let res = client
+						.post(webhook)
+						.body(json_data.clone())
+						.send();
+
+					match res {
+						Ok(_) => info!("Webhook called: {}", webhook),
+						Err(error) => error!("Webhook failed: {}. {}", webhook, error),
+					}
+				},
+			Err(error) => error!("Unable to serialize job data. {}", error),
+		}
+	}
+}
+

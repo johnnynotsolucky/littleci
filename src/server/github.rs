@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use serde_derive::Deserialize;
 use serde::{self, Deserialize, Deserializer};
 use serde::de::Error;
 use regex::Regex;

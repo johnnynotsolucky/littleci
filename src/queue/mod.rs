@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock};
 use std::collections::HashMap;
-use serde::{Serializer};
-use serde_derive::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize};
 use failure::{Error, format_err};
 use chrono::{NaiveDateTime, Utc};
 
@@ -10,9 +9,9 @@ use log::{debug, info, warn, error};
 
 use crate::config::{AppConfig, Particle};
 use crate::model::Queue;
+use crate::util::serialize_date;
 
 mod job;
-
 use job::{JobRunner, CommandRunner};
 
 const ALPHA_NUMERIC: [char; 62] = [
@@ -89,16 +88,6 @@ pub struct QueueItem {
     pub updated_at: NaiveDateTime,
 
 	pub logs: Vec<QueueLogItem>,
-}
-
-const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
-
-fn serialize_date<S>(dt: &NaiveDateTime, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let formatted = format!("{}", dt.format(DATETIME_FORMAT));
-    s.serialize_str(&formatted)
 }
 
 impl QueueItem {

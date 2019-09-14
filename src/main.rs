@@ -17,6 +17,7 @@ mod model;
 mod server;
 mod config;
 mod queue;
+mod util;
 
 use crate::server::start_server;
 use crate::config::{
