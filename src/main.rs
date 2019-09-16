@@ -194,24 +194,36 @@ fn setup_logger(log_to_syslog: bool) -> Result<(), Error> {
                 .chain(std::io::stdout())
         );
 
-    if log_to_syslog {
-        let syslog_formatter = syslog::Formatter3164 {
-            facility: syslog::Facility::LOG_USER,
-            hostname: None,
-            process: "littleci".to_owned(),
-            pid: process::id() as i32,
-        };
-
-        log_config = log_config.chain(
-            fern::Dispatch::new()
-                .level(log::LevelFilter::Info)
-                .chain(syslog::unix(syslog_formatter).unwrap())
-        );
-    }
+	if cfg!(linux) {
+		if log_to_syslog {
+			log_config = configure_syslog(log_config);
+		}
+	}
 
     log_config.apply()?;
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn configure_syslog(log_config: fern::Dispatch) -> fern::Dispatch {
+	let syslog_formatter = syslog::Formatter3164 {
+		facility: syslog::Facility::LOG_USER,
+		hostname: None,
+		process: "littleci".to_owned(),
+		pid: process::id() as i32,
+	};
+
+	log_config.chain(
+		fern::Dispatch::new()
+			.level(log::LevelFilter::Info)
+			.chain(syslog::unix(syslog_formatter).unwrap())
+	)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_syslog(log_config: fern::Dispatch) -> fern::Dispatch {
+	log_config
 }
 
 fn main() {

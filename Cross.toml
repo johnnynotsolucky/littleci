@@ -1,0 +1,12 @@
+[build.env]
+passthrough = [
+    "RUST_BACKTRACE",
+    "RUST_LOG",
+    "LITTLECI_BLAH",
+]
+
+[target.x86_64-unknown-linux-gnu]
+image = "johnnynotsolucky/cross:x86_64-unknown-linux-gnu"
+
+[target.x86_64-pc-windows-gnu]
+image = "johnnynotsolucky/cross:x86_64-pc-windows-gnu"
