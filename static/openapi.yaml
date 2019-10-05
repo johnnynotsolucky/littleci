@@ -1,0 +1,328 @@
+openapi: 3.0.1
+info:
+  title: LittleCI
+  version: 0.1.0
+  license:
+    name: Parity Public License
+    url: 'https://paritylicense.com/versions/6.0.0.html'
+  contact:
+    email: hi@littleci.org
+  termsOfService: 'https://littleci.org/terms/'
+  description: API documentation
+paths:
+  '/repositories/{repositoryName}/jobs/{jobId}':
+    get:
+      tags:
+        - jobs
+      summary: Get a job
+      operationId: getJobById
+      parameters:
+        - name: repositoryName
+          in: path
+          description: Name of repository
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          description: Job ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+  '/repositories/{repositoryName}/jobs':
+    get:
+      tags:
+        - jobs
+      summary: Get a list of jobs for a repository
+      operationId: getJobsByRepository
+      parameters:
+        - name: repositoryName
+          in: path
+          description: Name of repository
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Job'
+  '/repositories/{repositoryName}':
+    get:
+      tags:
+        - repositories
+      summary: Get a repository
+      operationId: getRepository
+      parameters:
+        - name: repositoryName
+          in: path
+          description: Name of repository
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+  /repositories:
+    get:
+      tags:
+        - repositories
+      summary: Get a list of configured repositories
+      operationId: getRepositories
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+  /config:
+    get:
+      tags:
+        - config
+      summary: Get client configuration properties
+      operationId: getConfig
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Config'
+  '/notify/{repositoryName}':
+    parameters:
+      - name: repositoryName
+        in: path
+        required: true
+        schema:
+            type: string
+    get:
+      operationId: notifyRepository
+      description: Trigger job with secret key header
+      tags:
+        - notify
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+              examples: {}
+      security:
+        - secret_key_header: []
+        - secret_key_query: []
+    post:
+      operationId: notifyRepositoryWithData
+      description: Trigger job with secret key header and extra data
+      tags:
+        - notify
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+            examples:
+              Example payload:
+                value:
+                  SOME_ENVIRONMENT_VARIABLE: FOOBARBAZ
+        description: Optional key/value pairs to be injected into a job as environment variables
+      security:
+        - secret_key_header: []
+        - secret_key_query: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+  '/notify/{repositoryName}/{service}':
+    parameters:
+      - name: repositoryName
+        in: path
+        required: true
+        schema:
+            type: string
+      - name: service
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - github
+    post:
+      operationId: notifyRepositoryWithService
+      description: Trigger job with a service-specific payload
+      tags:
+        - notify
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/GithubPayload'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+      security:
+        - github_signature: []
+components:
+  schemas:
+    ExecutionLog:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Execution status of this job
+          enum:
+            - cancelled
+            - queued
+            - running
+            - failed
+            - completed
+        exit_code:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: string
+          description: Timestamp of execution status change
+          format: date-time
+    ExecutionStatus:
+      type: string
+      description: Execution status of this job
+      enum:
+        - cancelled
+        - queued
+        - running
+        - failed
+        - completed
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Job ID
+        repository:
+          type: string
+          description: Name of the repository associated with this job
+        status:
+          $ref: '#/components/schemas/ExecutionStatus'
+        exit_code:
+          type: integer
+          format: int64
+          nullable: true
+        data:
+          type: object
+          description: Data passed into the job
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionLog'
+        _meta:
+          type: object
+    Repository:
+      type: object
+      properties:
+        repository:
+          type: string
+          description: Repository name
+        command:
+          type: string
+          description: Command to execute
+        working_dir:
+          type: string
+          description: Working dir to execute the command in
+        variables:
+          type: object
+        triggers:
+          type: object
+        _meta:
+          type: object
+    Config:
+      type: object
+      properties:
+        signature:
+          type: string
+          description: Hashed signature for use when triggering jobs
+        data_dir:
+          type: string
+          description: Storage location of LittleCI data on the host machine
+        network_host:
+          type: string
+          description: Network host which LittleCI binds to when started
+        site_url:
+          type: string
+          description: Base URL for LittleCI
+        port:
+          type: string
+          description: Port LittleCI binds to
+        log_to_syslog:
+          type: boolean
+          description: Whether LittleCI should log to syslog
+    GithubPayload:
+      type: object
+      properties:
+        ref:
+          type: string
+        before:
+          type: string
+        after:
+          type: string
+        head_commit:
+          type: string
+  securitySchemes:
+    secret_key_header:
+      name: X-Secret-Key
+      type: apiKey
+      in: header
+      description: ''
+    github_signature:
+      name: X-Hub-Signature
+      type: apiKey
+      in: header
+    secret_key_query:
+      name: key
+      type: apiKey
+      in: query
+tags:
+  - name: config
+    description: Client configuration
+  - name: repositories
+    description: Configured repositories
+  - name: jobs
+    description: ''
+  - name: notify
+    description: Trigger a job for a repository
+externalDocs:
+  description: Find out more about Swagger
+  url: 'http://swagger.io'

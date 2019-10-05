@@ -19,7 +19,7 @@ use crate::queue::{QueueItem, QueueLogItem, ExecutionStatus};
 #[table_name = "queue"]
 struct QueueRecord {
     id: String,
-    particle: String,
+    repository: String,
     status: String,
     exit_code: Option<i32>,
     data: String,
@@ -70,7 +70,7 @@ impl From<(QueueRecord, Vec<QueueLogRecord>)> for QueueItem {
 		let (record, logs) = record;
         QueueItem {
             id: record.id,
-            particle: record.particle,
+            repository: record.repository,
             status: ExecutionStatus::from((&*record.status, &record.exit_code)),
             data: serde_json::from_str(&record.data).unwrap(),
             created_at: record.created_at,
@@ -93,7 +93,7 @@ impl From<QueueLogRecord> for QueueLogItem {
 #[table_name = "queue"]
 struct NewQueueRecord {
     id: String,
-    particle: String,
+    repository: String,
     status: String,
     exit_code: Option<i32>,
     data: String,
@@ -107,7 +107,7 @@ impl From<&QueueItem> for NewQueueRecord {
 
         Self {
             id: item.id.clone(),
-            particle: item.particle.clone(),
+            repository: item.repository.clone(),
             status,
             exit_code,
             data: serde_json::to_string(&item.data).unwrap(),
@@ -222,11 +222,11 @@ impl Queue {
         }
 	}
 
-    pub fn all(&self, particle_name: &str) -> Result<Vec<QueueItem>, Error> {
+    pub fn all(&self, repository_name: &str) -> Result<Vec<QueueItem>, Error> {
         use schema::queue::dsl::*;
 
         let records = queue
-            .filter(particle.eq(particle_name))
+            .filter(repository.eq(repository_name))
             .order(created_at.desc())
             .load::<QueueRecord>(&self.establish_connection());
 
@@ -236,20 +236,20 @@ impl Queue {
 				.map(|record| QueueItem::from((record, Vec::new())))
 				.collect()),
             Err(error) => {
-                error!("Unable to fetch jobs for {}. {}", particle_name, error);
-                Err(format_err!("Unable to fetch jobs for {}. {}", particle_name, error))
+                error!("Unable to fetch jobs for {}. {}", repository_name, error);
+                Err(format_err!("Unable to fetch jobs for {}. {}", repository_name, error))
             }
         }
     }
 
-    pub fn job(&self, particle_name: &str, job_id: &str) -> Result<QueueItem, Error> {
+    pub fn job(&self, repository_name: &str, job_id: &str) -> Result<QueueItem, Error> {
         use schema::queue::dsl::*;
 
 		let conn = &self.establish_connection();
 
         let record = queue
             .filter(id.eq(job_id))
-            .filter(particle.eq(particle_name))
+            .filter(repository.eq(repository_name))
             .order(created_at.desc())
             .first::<QueueRecord>(conn);
 
@@ -268,8 +268,8 @@ impl Queue {
 				Ok(QueueItem::from((record, logs)))
 			},
             Err(error) => {
-                error!("Unable to fetch job {} for {}. {}", job_id, particle_name, error);
-                Err(format_err!("Unable to fetch job {} for {}. {}", job_id, particle_name, error))
+                error!("Unable to fetch job {} for {}. {}", job_id, repository_name, error);
+                Err(format_err!("Unable to fetch job {} for {}. {}", job_id, repository_name, error))
             }
         }
     }

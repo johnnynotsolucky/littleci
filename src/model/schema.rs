@@ -1,7 +1,7 @@
 table! {
     queue (id) {
         id -> Text,
-        particle -> Text,
+        repository -> Text,
         status -> Text,
         exit_code -> Nullable<Integer>,
         data -> Text,

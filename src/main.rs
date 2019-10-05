@@ -7,9 +7,12 @@ use std::fs::{self, create_dir_all};
 use std::process;
 use std::collections::HashMap;
 use std::convert::{Into, From};
+use crypto::digest::Digest;
+use crypto::sha1::Sha1;
 use regex::Regex;
 use fern::colors::{Color, ColoredLevelConfig};
 use directories::ProjectDirs;
+use secstr::SecStr;
 use clap::{clap_app, ArgMatches, value_t};
 use failure::{Error, format_err};
 
@@ -26,7 +29,7 @@ use crate::config::{
     get_hashed_signature,
     AppConfig,
     PersistedConfig,
-    Particle,
+    Repository,
 	Trigger,
 };
 use crate::queue::{QueueManager, QueueService};
@@ -39,9 +42,40 @@ const DEFAULT_PORT: u16 = 8000;
 #[derive(Debug, Clone)]
 pub struct AppState {
     config: Arc<AppConfig>,
-    particles: Arc<HashMap<String, Arc<Particle>>>,
+    repositories: Arc<HashMap<String, Arc<Repository>>>,
     queue_manager: Arc<QueueManager>,
     queues: Arc<HashMap<String, QueueService>>,
+}
+
+impl From<PersistedConfig> for AppState {
+    fn from(configuration: PersistedConfig) -> Self {
+        let mut hasher = Sha1::new();
+        hasher.input_str(&configuration.secret);
+        let signature = hasher.result_str();
+
+        let config = AppConfig {
+            signature: SecStr::from(signature),
+            data_dir: configuration.data_dir,
+            network_host: configuration.network_host.clone(),
+            site_url: configuration.site_url.unwrap_or(configuration.network_host),
+            port: configuration.port,
+            log_to_syslog: configuration.log_to_syslog,
+        };
+
+        let mut repositories = HashMap::new();
+        for (name, repository) in configuration.repositories.iter() {
+            repositories.insert(name.to_owned(), Arc::new(repository.clone()));
+        }
+
+        let queue_manager = QueueManager::new(Arc::new(config.clone()), &repositories);
+
+        Self {
+            config: Arc::new(config),
+            queue_manager: Arc::new(queue_manager),
+            repositories: Arc::new(repositories),
+            queues: Arc::new(HashMap::new()),
+        }
+    }
 }
 
 fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
@@ -71,7 +105,7 @@ fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
         site_url,
         port,
         log_to_syslog,
-        particles: HashMap::new(),
+        repositories: HashMap::new(),
     };
 
     let json = serde_json::to_string_pretty(&persisted_config);
@@ -103,7 +137,7 @@ pub fn kebab_case(original: &str) -> String {
     parts.join("-").to_lowercase()
 }
 
-fn add_particle_config(matches: &ArgMatches) -> Result<String, Error> {
+fn add_repository_config(matches: &ArgMatches) -> Result<String, Error> {
     let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
         Some(project_dirs) => project_dirs,
         None => return Err(format_err!("Invalid $HOME path.")),
@@ -113,7 +147,7 @@ fn add_particle_config(matches: &ArgMatches) -> Result<String, Error> {
 
 	let triggers = vec![Trigger::Any];
 
-    let particle = Particle {
+    let repository = Repository {
         command: matches.value_of("COMMAND").unwrap().to_owned(),
         working_dir: match matches.value_of("WORKING_DIR") {
             Some(working_dir) => Some(working_dir.to_owned()),
@@ -123,16 +157,16 @@ fn add_particle_config(matches: &ArgMatches) -> Result<String, Error> {
         ..Default::default()
     };
 
-    let particle_name = kebab_case(&matches.value_of("PARTICLE_NAME").unwrap()).to_owned();
+    let repository_name = kebab_case(&matches.value_of("REPOSITORY_NAME").unwrap()).to_owned();
 
-    persisted_config.particles.insert(particle_name, particle);
+    persisted_config.repositories.insert(repository_name, repository);
 
     let json = serde_json::to_string_pretty(&persisted_config)?;
     let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
     create_dir_all(&config_dir)?;
     let file_path = format!("{}/Settings.json", config_dir);
     fs::write(&file_path, json)?;
-    Ok(format!("Particle config added to {}", file_path))
+    Ok(format!("Repository config added to {}", file_path))
 }
 
 fn add_env_variable(matches: &ArgMatches) -> Result<String, Error> {
@@ -143,22 +177,22 @@ fn add_env_variable(matches: &ArgMatches) -> Result<String, Error> {
 
 	let mut persisted_config = load_app_config()?;
 
-	let particle_name = matches.value_of("PARTICLE_NAME").unwrap();
-	let particle = persisted_config.particles.get_mut(particle_name);
-	match particle {
-		Some(particle) => {
+	let repository_name = matches.value_of("REPOSITORY_NAME").unwrap();
+	let repository = persisted_config.repositories.get_mut(repository_name);
+	match repository {
+		Some(repository) => {
 			let variable_name = matches.value_of("VARIABLE_NAME").unwrap().to_owned();
 			let variable_value = matches.value_of("VALUE").unwrap().to_owned();
-			particle.variables.insert(variable_name, variable_value);
+			repository.variables.insert(variable_name, variable_value);
 
 			let json = serde_json::to_string_pretty(&persisted_config)?;
 			let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
 			create_dir_all(&config_dir)?;
 			let file_path = format!("{}/Settings.json", config_dir);
 			fs::write(&file_path, json)?;
-			Ok("Particle config updated".into())
+			Ok("Repository config updated".into())
 		},
-		None => Err(format_err!("Particle not found: {}", particle_name)),
+		None => Err(format_err!("Repository not found: {}", repository_name)),
 	}
 
 }
@@ -242,17 +276,17 @@ fn main() {
 		(@subcommand config_path =>
 			(about: "Returns the full path to LittleCI config")
 		)
-        (@subcommand particle =>
-            (about: "Configure particles")
+        (@subcommand repository =>
+            (about: "Configure repositories")
             (@subcommand set =>
-                (about: "Add a new particle")
-                (@arg PARTICLE_NAME: +takes_value +required "Name of the particle")
+                (about: "Add a new repository")
+                (@arg REPOSITORY_NAME: +takes_value +required "Name of the repository")
                 (@arg COMMAND: -c --command +takes_value +required "Command which should be executed. Note: Should include the full path to the executable if it is not in $PATH")
                 (@arg WORKING_DIR: -w --working_dir +takes_value " Working directory for the command to run in.")
             )
 			(@subcommand set_env =>
 				(about: "Add a variable to be injected into the running job")
-				(@arg PARTICLE_NAME: +takes_value +required "Name of the variable")
+				(@arg REPOSITORY_NAME: +takes_value +required "Name of the variable")
 				(@arg VARIABLE_NAME: +takes_value +required "Name of the variable")
 				(@arg VALUE: +takes_value +required "Value of the variable")
 			)
@@ -276,18 +310,18 @@ fn main() {
 		println!("{}", app_config_path());
 	}
 
-    if let Some(matches) = command_matches.subcommand_matches("particle") {
+    if let Some(matches) = command_matches.subcommand_matches("repository") {
         if let Some(matches) = matches.subcommand_matches("set") {
-            match add_particle_config(matches) {
+            match add_repository_config(matches) {
                 Ok(message) => println!("{}", message),
-                Err(error) => eprintln!("Unable to update particle config. {}", error),
+                Err(error) => eprintln!("Unable to update repository config. {}", error),
             }
         }
 
 		if let Some(matches) = matches.subcommand_matches("set_env") {
 			match add_env_variable(matches) {
 				Ok(message) => println!("{}", message),
-				Err(error) => eprintln!("Unable to update particle config. {}", error),
+				Err(error) => eprintln!("Unable to update repository config. {}", error),
 			}
 		}
     }

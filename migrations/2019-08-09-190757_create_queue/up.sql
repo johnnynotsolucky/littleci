@@ -1,6 +1,6 @@
 CREATE TABLE queue (
   id VARCHAR PRIMARY KEY NOT NULL,
-  particle VARCHAR NOT NULL,
+  repository VARCHAR NOT NULL,
   status VARCHAR NOT NULL,
   exit_code INTEGER,
   data TEXT NOT NULL,

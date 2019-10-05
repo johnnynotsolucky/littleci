@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-./build/docker/bsuild-images.sh
+./build/docker/build-images.sh
 
 cross build --target x86_64-unknown-linux-gnu --release
 

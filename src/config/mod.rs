@@ -12,12 +12,12 @@ use secstr::SecStr;
 
 use crate::{AppState, kebab_case};
 
-type ParticleMap = HashMap<String, Particle>;
+type RepositoryMap = HashMap<String, Repository>;
 
-fn deserialize_particle_map<'de, D>(d: D) -> Result<ParticleMap, D::Error>
+fn deserialize_repository_map<'de, D>(d: D) -> Result<RepositoryMap, D::Error>
 where D: Deserializer<'de>,
 {
-	match d.deserialize_map(ParticleMapVisitor::new()) {
+	match d.deserialize_map(RepositoryMapVisitor::new()) {
 		Ok(map) => {
 			let mut sanitized = HashMap::new();
 			map.iter().for_each(|(key, val)| {
@@ -31,23 +31,23 @@ where D: Deserializer<'de>,
 }
 
 #[derive(Debug)]
-struct ParticleMapVisitor {
-	marker: PhantomData<fn() -> ParticleMap>,
+struct RepositoryMapVisitor {
+	marker: PhantomData<fn() -> RepositoryMap>,
 }
 
-impl ParticleMapVisitor {
+impl RepositoryMapVisitor {
 	fn new() -> Self {
-		ParticleMapVisitor {
+		RepositoryMapVisitor {
 			marker: PhantomData,
 		}
 	}
 }
 
-impl<'de> Visitor<'de> for ParticleMapVisitor {
-	type Value = ParticleMap;
+impl<'de> Visitor<'de> for RepositoryMapVisitor {
+	type Value = RepositoryMap;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("Map of particle data")
+		formatter.write_str("Map of repository data")
 	}
 
 	fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
@@ -72,8 +72,8 @@ pub struct PersistedConfig {
 	pub port: u16,
 	pub log_to_syslog: bool,
 	#[serde(default)]
-	#[serde(deserialize_with = "deserialize_particle_map")]
-	pub particles: ParticleMap,
+	#[serde(deserialize_with = "deserialize_repository_map")]
+	pub repositories: RepositoryMap,
 }
 
 #[derive(Debug, Clone)]
@@ -87,7 +87,7 @@ pub struct AppConfig {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct Particle {
+pub struct Repository {
 	pub command: String,
 	pub working_dir: Option<String>,
 	pub webhooks: Option<Vec<String>>,

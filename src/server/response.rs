@@ -1,9 +1,10 @@
+use std::str;
 use std::collections::HashMap;
 use std::sync::Arc;
 use rocket::Route as RocketRoute;
 use serde_derive::{Serialize};
 
-use crate::config::{Particle, Trigger, AppConfig};
+use crate::config::{Repository, Trigger, AppConfig};
 use crate::queue::QueueItem;
 
 type Segment = Vec<(String, bool)>;
@@ -80,6 +81,19 @@ impl Into<RouteMap> for Routes {
 }
 
 #[derive(Serialize, Debug, Clone)]
+pub struct ErrorResponse {
+	pub message: String,
+}
+
+impl ErrorResponse {
+	pub fn new(message: String) -> Self {
+		Self {
+			message,
+		}
+	}
+}
+
+#[derive(Serialize, Debug, Clone)]
 pub struct Response<T> {
 	#[serde(flatten)]
 	pub response: T,
@@ -88,24 +102,49 @@ pub struct Response<T> {
 }
 
 #[derive(Serialize, Debug, Clone)]
-pub struct ParticleResponse {
-	#[serde(rename = "particle")]
+pub struct RepositoryResponse {
+	#[serde(rename = "repository")]
 	pub name: String,
 	pub command: String,
 	pub working_dir: Option<String>,
 	pub variables: HashMap<String, String>,
 	pub triggers: Vec<Trigger>,
-
 }
 
-impl ParticleResponse {
-	pub fn new(name: &str, particle: &Arc<Particle>) -> Self {
+impl RepositoryResponse {
+	pub fn new(name: &str, repository: &Arc<Repository>) -> Self {
 		Self {
 			name: name.to_owned(),
-			command: particle.command.clone(),
-			working_dir: particle.working_dir.clone(),
-			variables: particle.variables.clone(),
-			triggers: particle.triggers.clone(),
+			command: repository.command.clone(),
+			working_dir: repository.working_dir.clone(),
+			variables: repository.variables.clone(),
+			triggers: repository.triggers.clone(),
+		}
+	}
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct AppConfigResponse {
+	pub signature: String,
+	pub data_dir: String,
+	pub network_host: String,
+	pub site_url: String,
+	pub port: u16,
+	pub log_to_syslog: bool,
+}
+
+impl From<Arc<AppConfig>> for AppConfigResponse {
+	fn from(app_config: Arc<AppConfig>) -> AppConfigResponse {
+
+		let signature = str::from_utf8(app_config.signature.unsecure()).unwrap().into();
+
+		AppConfigResponse {
+			signature,
+			data_dir: app_config.data_dir.clone(),
+			network_host: app_config.network_host.clone(),
+			site_url: app_config.site_url.clone(),
+			port: app_config.port.clone(),
+			log_to_syslog: app_config.log_to_syslog.clone(),
 		}
 	}
 }
@@ -128,13 +167,13 @@ impl From<Vec<(&str, &str)>> for ResponseMeta {
 }
 
 
-pub fn meta_for_particle(app_config: &AppConfig, routes: &RouteMap, particle: &ParticleResponse) -> ResponseMeta {
+pub fn meta_for_repository(app_config: &AppConfig, routes: &RouteMap, repository: &RepositoryResponse) -> ResponseMeta {
 	let identity_url = format!("{}{}", &app_config.site_url,
 		routes
-			.get("particle")
+			.get("repository")
 			.unwrap()
 			.url(vec![
-				("particle", &particle.name),
+				("repository", &repository.name),
 			])
 	);
 
@@ -143,7 +182,7 @@ pub fn meta_for_particle(app_config: &AppConfig, routes: &RouteMap, particle: &P
 			.get("jobs")
 			.unwrap()
 			.url(vec![
-				("particle", &particle.name),
+				("repository", &repository.name),
 			])
 	);
 
@@ -159,7 +198,7 @@ pub fn meta_for_queue_item(app_config: &AppConfig, routes: &RouteMap, queue_item
 			.get("job")
 			.unwrap()
 			.url(vec![
-				("particle", &queue_item.particle),
+				("repository", &queue_item.repository),
 				("id", &queue_item.id),
 			])
 	);
@@ -168,7 +207,7 @@ pub fn meta_for_queue_item(app_config: &AppConfig, routes: &RouteMap, queue_item
 	let stdout_url = format!("{}{}", &app_config.site_url,
 		log_output.clone()
 			.url(vec![
-				("particle", &queue_item.particle),
+				("repository", &queue_item.repository),
 				("id", &queue_item.id),
 				("log", "stdout"),
 			])
@@ -177,7 +216,7 @@ pub fn meta_for_queue_item(app_config: &AppConfig, routes: &RouteMap, queue_item
 	let stderr_url = format!("{}{}", &app_config.site_url,
 		log_output.clone()
 			.url(vec![
-				("particle", &queue_item.particle),
+				("repository", &queue_item.repository),
 				("id", &queue_item.id),
 				("log", "stderr"),
 			])

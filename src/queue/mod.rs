@@ -7,7 +7,7 @@ use chrono::{NaiveDateTime, Utc};
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use crate::config::{AppConfig, Particle};
+use crate::config::{AppConfig, Repository};
 use crate::model::Queue;
 use crate::util::serialize_date;
 
@@ -69,7 +69,7 @@ pub struct QueueItem {
     /// A random system-generated execution identifier.
     pub id: String,
 
-    pub particle: String,
+    pub repository: String,
 
     /// Current status of the execution
     #[serde(flatten)]
@@ -91,10 +91,10 @@ pub struct QueueItem {
 }
 
 impl QueueItem {
-    fn new(particle: &str, data: ArbitraryData) -> Self {
+    fn new(repository: &str, data: ArbitraryData) -> Self {
         Self {
             id: nanoid::custom(24, &ALPHA_NUMERIC),
-            particle: particle.to_owned(),
+            repository: repository.to_owned(),
             status: ExecutionStatus::Queued,
             data,
             created_at: Utc::now().naive_utc(),
@@ -121,16 +121,16 @@ pub struct QueueManager {
 }
 
 impl QueueManager {
-    pub fn new(config: Arc<AppConfig>, particles: &HashMap<String, Arc<Particle>>) -> Self {
+    pub fn new(config: Arc<AppConfig>, repositories: &HashMap<String, Arc<Repository>>) -> Self {
         let model = Arc::new(Queue::new(config.clone()));
         let mut queues = HashMap::new();
-        for (name, particles) in particles.iter() {
+        for (name, repositories) in repositories.iter() {
             queues.insert(
                 name.to_owned(),
                 QueueService::new(
                     name.to_owned(),
                     config.clone(),
-                    particles.clone(),
+                    repositories.clone(),
                     model.clone(),
                 )
             );
@@ -143,24 +143,24 @@ impl QueueManager {
         }
     }
 
-    pub fn push(&self, particle_name: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
-        match self.queues.get(particle_name) {
+    pub fn push(&self, repository_name: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
+        match self.queues.get(repository_name) {
             Some(queue) => {
-                let item = QueueItem::new(particle_name, data);
+                let item = QueueItem::new(repository_name, data);
                 self.model.push(&item);
                 queue.notify();
                 Ok(item)
             },
-            None => Err(format_err!("Could not find queue with name {}", particle_name)),
+            None => Err(format_err!("Could not find queue with name {}", repository_name)),
         }
     }
 
-    pub fn all(&self, particle: &str) -> Result<Vec<QueueItem>, Error> {
-        self.model.all(particle)
+    pub fn all(&self, repository: &str) -> Result<Vec<QueueItem>, Error> {
+        self.model.all(repository)
     }
 
-    pub fn job(&self, particle: &str, id: &str) -> Result<QueueItem, Error> {
-        self.model.job(particle, id)
+    pub fn job(&self, repository: &str, id: &str) -> Result<QueueItem, Error> {
+        self.model.job(repository, id)
     }
 }
 
@@ -171,7 +171,7 @@ pub struct ProcessingQueue;
 pub struct QueueService {
     pub name: Arc<String>,
     pub config: Arc<AppConfig>,
-    pub particle: Arc<Particle>,
+    pub repository: Arc<Repository>,
     pub processing_queue: Arc<Mutex<ProcessingQueue>>,
     pub queue: Arc<RwLock<Vec<QueueItem>>>,
     pub model: Arc<Queue>,
@@ -179,11 +179,11 @@ pub struct QueueService {
 }
 
 impl QueueService {
-    fn new(name: String, config: Arc<AppConfig>, particle: Arc<Particle>, model: Arc<Queue>) -> Self {
+    fn new(name: String, config: Arc<AppConfig>, repository: Arc<Repository>, model: Arc<Queue>) -> Self {
         Self {
             name: Arc::new(name),
             config,
-            particle,
+            repository,
             processing_queue: Arc::new(Mutex::new(ProcessingQueue)),
             queue: Arc::new(RwLock::new(Vec::new())),
             model,

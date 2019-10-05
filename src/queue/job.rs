@@ -10,7 +10,7 @@ use reqwest::Client;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use crate::config::Particle;
+use crate::config::Repository;
 use super::{ExecutionStatus, QueueService, QueueItem};
 
 #[derive(Serialize, Debug, Clone)]
@@ -18,7 +18,7 @@ pub struct QueueItemData {
     /// A random system-generated execution identifier.
     pub id: String,
 
-    pub particle: String,
+    pub repository: String,
 
     /// Current status of the execution
     #[serde(flatten)]
@@ -29,7 +29,7 @@ impl From<QueueItem> for QueueItemData {
 	fn from(queue_item: QueueItem) -> Self {
 		Self {
 			id: queue_item.id,
-			particle: queue_item.particle,
+			repository: queue_item.repository,
 			status: queue_item.status.clone(),
 		}
 	}
@@ -50,7 +50,7 @@ impl JobRunner for CommandRunner {
 			let queue_name = queue_service.name.clone();
 			let queue_name = (&*queue_name).to_owned();
 			let processing_queue = queue_service.processing_queue.clone();
-			let particle = queue_service.particle.clone();
+			let repository = queue_service.repository.clone();
 
 			// Acquire a lock so that we can ensure that only a single thread per queue is spawned.
 			// When `notify` is called we can try acquire a lock, if unsuccessful we can safely
@@ -72,7 +72,7 @@ impl JobRunner for CommandRunner {
 								error!("Unable to update status of item {}. {}", &item.id, error);
 							}
 
-							call_webhooks(&particle, &item);
+							call_webhooks(&repository, &item);
 
 							let execution_dir = format!("{}/jobs/{}", &queue_service.config.data_dir, &item.id);
 
@@ -99,7 +99,7 @@ impl JobRunner for CommandRunner {
 
 									let mut command = Command::new("/bin/sh");
 
-									for variable in particle.variables.iter() {
+									for variable in repository.variables.iter() {
 										let (key, value) = variable;
 										command.env(key, value);
 									}
@@ -109,12 +109,12 @@ impl JobRunner for CommandRunner {
 										command.env(key, value);
 									}
 
-									if let Some(working_dir) = &particle.working_dir {
+									if let Some(working_dir) = &repository.working_dir {
 										command.current_dir(working_dir.to_owned());
 									};
 
 									command
-										.args(&["-c", &particle.command.to_string()])
+										.args(&["-c", &repository.command.to_string()])
 										.stdout(Stdio::from(stdout_log_f))
 										.stderr(Stdio::from(stderr_log_f));
 
@@ -162,7 +162,7 @@ impl JobRunner for CommandRunner {
 								Err(_) => error!("Execution {} failed. Unable to create log dir. Please check permissions.", &item.id),
 							}
 
-							call_webhooks(&particle, &item);
+							call_webhooks(&repository, &item);
 
 							// TODO Do we need to sleep?
 							// thread::sleep(time::Duration::from_millis(100));
@@ -181,8 +181,8 @@ impl JobRunner for CommandRunner {
 	}
 }
 
-fn call_webhooks(particle: &Particle, item: &QueueItem) {
-	if let Some(webhooks) = &particle.webhooks {
+fn call_webhooks(repository: &Repository, item: &QueueItem) {
+	if let Some(webhooks) = &repository.webhooks {
 		let client = Client::new();
 		match to_json_string(&QueueItemData::from(item.clone())) {
 			Ok(json_data) =>
