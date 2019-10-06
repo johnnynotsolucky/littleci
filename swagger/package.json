@@ -4,17 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "cross-env NODE_ENV=dev parcel -p 8080 --public-url /swagger watch index.html",
-    "build": "cross-env NODE_ENV=production parcel --public-url /swagger build index.html",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "parcel -p 8080 watch index.html --public-url /swagger",
+    "build": "rimraf ./dist && parcel build index.html --public-url /swagger"
   },
   "author": "",
-  "license": "ISC",
+  "license": "Parity-6.0.0",
   "dependencies": {
-    "swagger-ui-dist": "^3.23.11"
+    "swagger-ui": "^3.23.11"
   },
   "devDependencies": {
-    "cross-env": "^6.0.3",
-    "parcel-bundler": "^1.12.3"
+    "parcel-bundler": "^1.12.3",
+    "rimraf": "^3.0.0"
   }
 }
