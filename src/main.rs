@@ -7,8 +7,8 @@ use std::fs::{self, create_dir_all};
 use std::process;
 use std::collections::HashMap;
 use std::convert::{Into, From};
-use crypto::digest::Digest;
-use crypto::sha1::Sha1;
+use std::fmt::Write;
+use sha3::{Digest, Sha3_256};
 use regex::Regex;
 use fern::colors::{Color, ColoredLevelConfig};
 use directories::ProjectDirs;
@@ -49,9 +49,14 @@ pub struct AppState {
 
 impl From<PersistedConfig> for AppState {
     fn from(configuration: PersistedConfig) -> Self {
-        let mut hasher = Sha1::new();
-        hasher.input_str(&configuration.secret);
-        let signature = hasher.result_str();
+		let mut hasher = Sha3_256::new();
+		hasher.input(&configuration.secret.as_bytes());
+		let signature_bytes = hasher.result();
+		let mut signature = String::new();
+		for b in signature_bytes {
+			write!(&mut signature, "{:X}", b).expect("Unable to generate secret hash");
+		}
+		signature = signature.to_lowercase();
 
         let config = AppConfig {
             signature: SecStr::from(signature),

@@ -133,11 +133,16 @@ pub fn load_app_config() -> Result<PersistedConfig, Error> {
 
 pub fn get_hashed_signature() -> Result<String, Error> {
 	match load_app_config() {
-		Ok(persisted_config) => Ok(
-			str::from_utf8(
-				AppState::from(persisted_config).config.signature.unsecure()
-			).unwrap().into()
-		),
+		Ok(persisted_config) => {
+			let app_state = AppState::from(persisted_config);
+			let s = app_state.config.signature.unsecure();
+			if let Err(err) = str::from_utf8(s) {
+				eprintln!("{}", err);
+			}
+			Ok(
+				str::from_utf8(s).unwrap().into()
+			)
+		},
 		Err(_) => Err(format_err!("No configuration found. Please configure LittleCI first.")),
 	}
 }
