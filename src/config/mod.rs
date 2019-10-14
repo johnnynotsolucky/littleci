@@ -71,9 +71,17 @@ pub struct PersistedConfig {
 	pub network_host: String,
 	pub port: u16,
 	pub log_to_syslog: bool,
+	pub authentication_enabled: bool,
+	pub users: HashMap<String, User>,
 	#[serde(default)]
 	#[serde(deserialize_with = "deserialize_repository_map")]
 	pub repositories: RepositoryMap,
+}
+
+#[derive(Deserialize, Default, Serialize, Debug, Clone)]
+pub struct User {
+	pub username: String,
+	pub password: String,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +92,8 @@ pub struct AppConfig {
 	pub site_url: String,
 	pub port: u16,
 	pub log_to_syslog: bool,
+	pub authentication_enabled: bool,
+	pub users: HashMap<String, User>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]

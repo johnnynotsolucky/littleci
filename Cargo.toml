@@ -27,15 +27,16 @@ reqwest = "0.9"
 rust-embed = "5.1"
 jsonwebtoken = "5.0"
 sha3 = "0.8"
+rpassword = "4.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 syslog = "4.0"
 
 [dependencies.rocket_contrib]
-version = "0.4.2"
+version = "0.4"
 default-features = false
 features = ["json", "serve"]
 
 [dependencies.fern]
-version = "0.5.8"
+version = "0.5"
 features = ["colored", "syslog-4"]

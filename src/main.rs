@@ -31,6 +31,7 @@ use crate::config::{
     PersistedConfig,
     Repository,
 	Trigger,
+	User,
 };
 use crate::queue::{QueueManager, QueueService};
 
@@ -38,6 +39,29 @@ use crate::queue::{QueueManager, QueueService};
 use log::{debug, info, warn, error};
 
 const DEFAULT_PORT: u16 = 8000;
+
+#[derive(Debug, Clone)]
+pub struct HashedSecret(String);
+
+impl HashedSecret {
+	pub fn new(val: &str) -> Self {
+		let mut hasher = Sha3_256::new();
+		hasher.input(val.as_bytes());
+		let signature_bytes = hasher.result();
+		let mut hashed = String::new();
+		for b in signature_bytes {
+			write!(&mut hashed, "{:X}", b).expect("Unable to generate secret hash");
+		}
+		hashed = hashed.to_lowercase();
+		HashedSecret(hashed)
+	}
+}
+
+impl Into<String> for HashedSecret {
+	fn into(self) -> String {
+		self.0
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct AppState {
@@ -49,14 +73,7 @@ pub struct AppState {
 
 impl From<PersistedConfig> for AppState {
     fn from(configuration: PersistedConfig) -> Self {
-		let mut hasher = Sha3_256::new();
-		hasher.input(&configuration.secret.as_bytes());
-		let signature_bytes = hasher.result();
-		let mut signature = String::new();
-		for b in signature_bytes {
-			write!(&mut signature, "{:X}", b).expect("Unable to generate secret hash");
-		}
-		signature = signature.to_lowercase();
+		let signature: String = HashedSecret::new(&configuration.secret).into();
 
         let config = AppConfig {
             signature: SecStr::from(signature),
@@ -65,6 +82,7 @@ impl From<PersistedConfig> for AppState {
             site_url: configuration.site_url.unwrap_or(configuration.network_host),
             port: configuration.port,
             log_to_syslog: configuration.log_to_syslog,
+			users: configuration.users,
         };
 
         let mut repositories = HashMap::new();
@@ -111,6 +129,7 @@ fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
         port,
         log_to_syslog,
         repositories: HashMap::new(),
+		users: HashMap::new(),
     };
 
     let json = serde_json::to_string_pretty(&persisted_config);
@@ -199,7 +218,25 @@ fn add_env_variable(matches: &ArgMatches) -> Result<String, Error> {
 		},
 		None => Err(format_err!("Repository not found: {}", repository_name)),
 	}
+}
 
+fn add_user(username: &str, password: &str) -> Result<String, Error> {
+	let mut persisted_config = load_app_config()?;
+	let username = username.to_owned();
+	let password: String = HashedSecret::new(&password).into();
+	persisted_config.users.insert(username.clone(), User { username, password: password.to_owned() });
+
+	// TODO make reusable
+	let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
+		Some(project_dirs) => project_dirs,
+		None => return Err(format_err!("Invalid $HOME path.")),
+	};
+	let json = serde_json::to_string_pretty(&persisted_config)?;
+	let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
+	create_dir_all(&config_dir)?;
+	let file_path = format!("{}/Settings.json", config_dir);
+	fs::write(&file_path, json)?;
+	Ok("User added".into())
 }
 
 fn setup_logger(log_to_syslog: bool) -> Result<(), Error> {
@@ -296,6 +333,13 @@ fn main() {
 				(@arg VALUE: +takes_value +required "Value of the variable")
 			)
         )
+		(@subcommand users =>
+			(about: "Manage users")
+			(@subcommand add =>
+				(about: "Add a new user")
+				(@arg USERNAME: +takes_value +required "Username")
+			)
+		)
         (@subcommand signature =>
             (about: "Get the hashed signature to authenticate notifications")
         )
@@ -349,5 +393,22 @@ fn main() {
             Err(_) => eprintln!("No configuration found. Please configure LittleCI first."),
         }
     }
+
+	if let Some(matches) = command_matches.subcommand_matches("users") {
+		if let Some(matches) = matches.subcommand_matches("add") {
+			let password = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
+			let confirm = rpassword::read_password_from_tty(Some("Confirm password: ")).unwrap();
+			if password != confirm {
+				eprintln!("Passwords do not match.");
+			} else {
+				let username = matches.value_of("USERNAME").unwrap();
+
+				match add_user(username, &password) {
+					Ok(message) => println!("{}", message),
+					Err(error) => eprintln!("Unable to add user: {}", error),
+				}
+			}
+		}
+	}
 }
 
