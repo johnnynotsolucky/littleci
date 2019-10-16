@@ -379,7 +379,7 @@ pub fn job(repository: &RawStr, id: &RawStr, state: State<AppState>, routes: Sta
 pub struct StaticAsset(PathBuf, Option<String>);
 
 impl Responder<'static> for StaticAsset {
-    fn respond_to(self, req: &Request) -> Result<rocket::response::Response<'static>, Status> {
+    fn respond_to(self, _req: &Request) -> Result<rocket::response::Response<'static>, Status> {
 		if let Some(content) = self.1 {
 			let mut response = rocket::response::Response::build();
 			response.sized_body(Cursor::new(content));

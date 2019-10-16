@@ -1,5 +1,7 @@
 use std::io::Read;
 use std::collections::HashMap;
+use std::str;
+use std::fmt::Write;
 use serde::{self, Deserialize, Deserializer};
 use serde::de::Error;
 use regex::Regex;
@@ -23,7 +25,6 @@ pub struct GitHubPayload {
 	pub reference: GitReference,
 	pub before: String,
 	pub after: String,
-	pub head_commit: Option<String>,
 }
 
 const LIMIT: u64 = 26214400; // 25MB
@@ -41,26 +42,24 @@ impl FromDataSimple for GitHubPayload {
 		}
 
 		let signature = signature.unwrap();
-
 		let state = request.guard::<State<AppState>>().unwrap();
 
         let mut payload = Vec::new();
-        if let Err(e) = data.open().take(LIMIT).read_to_end(&mut payload) {
+        if let Err(_) = data.open().take(LIMIT).read_to_end(&mut payload) {
             return Outcome::Failure((Status::BadRequest, SecretKeyError::BadData));
         }
 
 		if let Ok(mut mac) = HmacSha1::new_varkey(state.config.secret.unsecure()) {
 			mac.input(&payload);
 
-			if mac.verify(signature.as_bytes()).is_ok() {
+			let signature = hex::decode(&signature).unwrap();
+			if mac.verify(&signature).is_ok() {
 				let payload = serde_json::from_slice(&payload);
-				if let Ok(payload) = payload {
-					Outcome::Success(payload)
-				} else {
-					Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
+				match payload {
+					Ok(payload) => Outcome::Success(payload),
+					Err(_) => Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
 				}
 			} else {
-				eprintln!("Invalid signature");
 				Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
 			}
 		} else {
@@ -74,10 +73,6 @@ impl From<GitHubPayload> for ArbitraryData {
 		let mut data: HashMap<String, String> = HashMap::new();
 		data.insert("LITTLECI_GIT_BEFORE".into(), payload.before);
 		data.insert("LITTLECI_GIT_AFTER".into(), payload.after);
-
-		if let Some(head_commit) = payload.head_commit {
-			data.insert("LITTLECI_GIT_HEAD_COMMIT".into(), head_commit);
-		}
 
 		match payload.reference {
 			GitReference::Head(branch) => data.insert("LITTLECI_GIT_BRANCH".into(), branch),
