@@ -136,7 +136,7 @@ pub struct AppConfigResponse {
 impl From<Arc<AppConfig>> for AppConfigResponse {
 	fn from(app_config: Arc<AppConfig>) -> AppConfigResponse {
 
-		let signature = str::from_utf8(app_config.signature.unsecure()).unwrap().into();
+		let signature = str::from_utf8(app_config.secret.unsecure()).unwrap().into();
 
 		AppConfigResponse {
 			signature,

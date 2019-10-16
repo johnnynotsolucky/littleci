@@ -86,7 +86,7 @@ pub struct User {
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
-	pub signature: SecStr,
+	pub secret: SecStr,
 	pub data_dir: String,
 	pub network_host: String,
 	pub site_url: String,
@@ -141,11 +141,11 @@ pub fn load_app_config() -> Result<PersistedConfig, Error> {
 	Ok(persisted_config)
 }
 
-pub fn get_hashed_signature() -> Result<String, Error> {
+pub fn get_secret() -> Result<String, Error> {
 	match load_app_config() {
 		Ok(persisted_config) => {
 			let app_state = AppState::from(persisted_config);
-			let s = app_state.config.signature.unsecure();
+			let s = app_state.config.secret.unsecure();
 			if let Err(err) = str::from_utf8(s) {
 				eprintln!("{}", err);
 			}

@@ -24,12 +24,16 @@ use crate::queue::{QueueItem, ArbitraryData};
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
+mod git;
 mod github;
+mod gitea;
 pub mod response;
 pub mod cors;
 mod static_assets;
 
-use github::{GitHubPayload, GitReference, GitHubSecret};
+use git::GitReference;
+use gitea::{GiteaPayload, GiteaSecret};
+use github::{GitHubPayload};
 use response::{
 	Routes,
 	RouteMap,
@@ -47,17 +51,21 @@ pub struct SecretKey;
 
 #[derive(Fail, Debug, Clone)]
 pub enum SecretKeyError {
-	#[fail(display = "Secret key was not found")]
+	#[fail(display = "Signature was not found")]
 	Missing,
-	#[fail(display = "Secret key is invalid")]
+	#[fail(display = "Signature is invalid")]
 	Invalid,
+	#[fail(display = "Invalid payload")]
+	BadData,
+	#[fail(display = "Unhandled error")]
+	Unknown,
 }
 
-fn secret_key_is_valid(key: &str, state: &AppState) -> bool {
-	let signature = SecStr::from(key);
-	let state_signature = &state.config.signature;
+fn secret_key_is_valid(secret: &str, state: &AppState) -> bool {
+	let secret = SecStr::from(secret);
+	let state_secret = &state.config.secret;
 
-	&signature == state_signature
+	&secret == state_secret
 }
 
 impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
@@ -152,8 +160,7 @@ pub enum JobOrSkipped {
 #[post("/notify/<repository>/github", format = "json", data = "<payload>")]
 pub fn notify_github(
 	repository: &RawStr,
-	payload: Json<GitHubPayload>,
-	_github_secret: GitHubSecret,
+	payload: GitHubPayload,
 	state: State<AppState>,
 	routes: State<RouteMap>
 	) -> Result<Json<JobOrSkipped>, String> {
@@ -205,7 +212,7 @@ pub fn notify_github(
 		debug!("Notifying new job for repository {}", repository_name);
 		match notify_new_job(
 			repository_name,
-			ArbitraryData::from(payload.into_inner()),
+			ArbitraryData::from(payload),
 			state.inner(),
 			routes.inner()
 		) {

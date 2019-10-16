@@ -26,7 +26,7 @@ use crate::server::start_server;
 use crate::config::{
     app_config_path,
 	load_app_config,
-    get_hashed_signature,
+    get_secret,
     AppConfig,
     PersistedConfig,
     Repository,
@@ -73,15 +73,16 @@ pub struct AppState {
 
 impl From<PersistedConfig> for AppState {
     fn from(configuration: PersistedConfig) -> Self {
-		let signature: String = HashedSecret::new(&configuration.secret).into();
+		let secret: String = configuration.secret.clone();
 
         let config = AppConfig {
-            signature: SecStr::from(signature),
+            secret: SecStr::from(secret),
             data_dir: configuration.data_dir,
             network_host: configuration.network_host.clone(),
             site_url: configuration.site_url.unwrap_or(configuration.network_host),
             port: configuration.port,
             log_to_syslog: configuration.log_to_syslog,
+			authentication_enabled: configuration.authentication_enabled,
 			users: configuration.users,
         };
 
@@ -129,6 +130,7 @@ fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
         port,
         log_to_syslog,
         repositories: HashMap::new(),
+		authentication_enabled: true,
 		users: HashMap::new(),
     };
 
@@ -340,8 +342,8 @@ fn main() {
 				(@arg USERNAME: +takes_value +required "Username")
 			)
 		)
-        (@subcommand signature =>
-            (about: "Get the hashed signature to authenticate notifications")
+        (@subcommand secret =>
+            (about: "Get the secret to authenticate notifications")
         )
         (@subcommand serve =>
             (about: "Launch LittleCI's HTTP server")
@@ -375,10 +377,10 @@ fn main() {
 		}
     }
 
-    if command_matches.subcommand_matches("signature").is_some() {
-        match get_hashed_signature() {
-            Ok(signature) => println!("{}", signature),
-            Err(error) => eprintln!("Unable to retrieve signature. {}", error),
+    if command_matches.subcommand_matches("secret").is_some() {
+        match get_secret() {
+            Ok(secret) => println!("{}", secret),
+            Err(error) => eprintln!("Unable to retrieve secret. {}", error),
         }
     }
 
