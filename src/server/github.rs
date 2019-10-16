@@ -42,6 +42,7 @@ impl FromDataSimple for GitHubPayload {
 		}
 
 		let signature = signature.unwrap();
+		let signature = &signature[5..];
 		let state = request.guard::<State<AppState>>().unwrap();
 
         let mut payload = Vec::new();
@@ -52,15 +53,20 @@ impl FromDataSimple for GitHubPayload {
 		if let Ok(mut mac) = HmacSha1::new_varkey(state.config.secret.unsecure()) {
 			mac.input(&payload);
 
-			let signature = hex::decode(&signature).unwrap();
-			if mac.verify(&signature).is_ok() {
-				let payload = serde_json::from_slice(&payload);
-				match payload {
-					Ok(payload) => Outcome::Success(payload),
-					Err(_) => Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
-				}
-			} else {
-				Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
+			let signature = hex::decode(&signature);
+			match signature {
+				Ok(signature) => {
+					if mac.verify(&signature).is_ok() {
+						let payload = serde_json::from_slice(&payload);
+						match payload {
+							Ok(payload) => Outcome::Success(payload),
+							Err(_) => Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
+						}
+					} else {
+						Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
+					}
+				},
+				Err(_) => Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
 			}
 		} else {
 			Outcome::Failure((Status::InternalServerError, SecretKeyError::Unknown))
