@@ -156,3 +156,9 @@ pub fn get_secret() -> Result<String, Error> {
 		Err(_) => Err(format_err!("No configuration found. Please configure LittleCI first.")),
 	}
 }
+
+pub enum AuthenticationType {
+	NoAuthentication,
+	Simple,
+}
+

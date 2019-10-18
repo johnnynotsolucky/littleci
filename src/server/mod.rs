@@ -24,6 +24,7 @@ use crate::queue::{QueueItem, ArbitraryData};
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
+mod auth;
 mod git;
 mod github;
 mod gitea;
@@ -31,6 +32,7 @@ pub mod response;
 pub mod cors;
 mod static_assets;
 
+use auth::User;
 use git::GitReference;
 use gitea::{GiteaPayload, GiteaSecret};
 use github::{GitHubPayload};
@@ -274,7 +276,7 @@ pub fn repositories(state: State<AppState>, routes: State<RouteMap>)
 }
 
 #[get("/config")]
-pub fn get_config(state: State<AppState>)
+pub fn get_config(_user: User, state: State<AppState>)
 	-> Result<Json<AppConfigResponse>, String>
 {
 	Ok(

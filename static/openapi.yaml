@@ -106,6 +106,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Config'
+      security:
+        - user_auth: []
   '/notify/{repositoryName}':
     parameters:
       - name: repositoryName
@@ -301,6 +303,10 @@ components:
         head_commit:
           type: string
   securitySchemes:
+    user_auth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
     secret_key_header:
       name: X-Secret-Key
       type: apiKey
