@@ -10,6 +10,24 @@ info:
   termsOfService: 'https://littleci.org/terms/'
   description: API documentation
 paths:
+  '/login':
+    post:
+      tags:
+        - config
+      summary: Login a user
+      operationId: loginUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCredentials'
+      responses:
+        '200':
+          description: User logged in successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
   '/repositories/{repositoryName}/jobs/{jobId}':
     get:
       tags:
@@ -301,6 +319,22 @@ components:
         after:
           type: string
         head_commit:
+          type: string
+    UserCredentials:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    UserResponse:
+      type: object
+      properties:
+        username:
+          type: string
+        exp:
+          type: string
+        token:
           type: string
   securitySchemes:
     user_auth:

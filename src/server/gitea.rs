@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use serde::{self, Deserialize, Deserializer};
-use serde::de::Error;
-use regex::Regex;
+use serde::{self, Deserialize};
 use rocket::{Outcome, State};
 use rocket::http::Status;
 use rocket::request::{self, Request, FromRequest};

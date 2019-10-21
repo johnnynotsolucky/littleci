@@ -1,24 +1,21 @@
 use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
 use std::fs::read_to_string;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::io::Cursor;
 use rocket::http::{RawStr, Status, ContentType};
 use rocket::{Outcome, State, get, post, catch, routes, catchers};
 use rocket::config::{Config, Environment};
 use rocket::request::{self, Request, FromRequest, FromParam};
-use rocket::response::{NamedFile, Responder, Redirect};
+use rocket::response::{Responder, Redirect};
 use rocket_contrib::json::Json;
-use rocket_contrib::serve::StaticFiles;
 use failure::{Error, Fail, format_err};
 use serde_derive::{Serialize, Deserialize};
 use secstr::SecStr;
 use base64::encode;
-use rust_embed::RustEmbed;
 
 use crate::{AppState};
-use crate::config::{Trigger, GitTrigger, AppConfig, PersistedConfig};
+use crate::config::{Trigger, GitTrigger, PersistedConfig};
 use crate::queue::{QueueItem, ArbitraryData};
 
 #[allow(unused_imports)]
@@ -32,7 +29,7 @@ pub mod response;
 pub mod cors;
 mod static_assets;
 
-use auth::User;
+use auth::{UserPayload, authenticate_user};
 use git::GitReference;
 use gitea::{GiteaPayload, GiteaSecret};
 use github::{GitHubPayload};
@@ -276,7 +273,7 @@ pub fn repositories(state: State<AppState>, routes: State<RouteMap>)
 }
 
 #[get("/config")]
-pub fn get_config(_user: User, state: State<AppState>)
+pub fn get_config(_user: UserPayload, state: State<AppState>)
 	-> Result<Json<AppConfigResponse>, String>
 {
 	Ok(
@@ -284,6 +281,36 @@ pub fn get_config(_user: User, state: State<AppState>)
 			AppConfigResponse::from(state.config.clone())
 		)
 	)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserCredentials {
+	pub username: String,
+	pub password: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoginResponse {
+	#[serde(flatten)]
+	pub payload: UserPayload,
+	pub token: String,
+}
+
+#[post("/login", format = "json", data = "<data>")]
+pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json<LoginResponse>, String>
+{
+	let data = data.into_inner();
+	let payload = authenticate_user(&state.config, &data.username, &data.password);
+	match payload {
+		Ok(payload) => {
+			let response = LoginResponse {
+				payload: payload.clone(),
+				token: payload.into_token(&state.config),
+			};
+			Ok(Json(response))
+		},
+		Err(_) => Err("Username or password incorrect".into()),
+	}
 }
 
 #[get("/repositories/<repository>")]
@@ -454,6 +481,7 @@ pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 				jobs,
 				job,
 				log_output,
+				login,
 				get_static_asset,
 				get_swagger_asset,
 				swagger,

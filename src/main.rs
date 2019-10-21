@@ -387,7 +387,7 @@ fn main() {
     if command_matches.subcommand_matches("serve").is_some() {
         match load_app_config() {
             Ok(persisted_config) => {
-                setup_logger(persisted_config.log_to_syslog);
+                setup_logger(persisted_config.log_to_syslog).expect("Failed to initialize the logger");
                 if let Err(error) = start_server(persisted_config) {
                     eprintln!("Unable to start server. {}", error);
                 }

@@ -1,19 +1,16 @@
 use std::io::Read;
 use std::collections::HashMap;
 use std::str;
-use std::fmt::Write;
-use serde::{self, Deserialize, Deserializer};
-use serde::de::Error;
-use regex::Regex;
+use serde::{self, Deserialize};
 use rocket::{Outcome, State, Data};
 use rocket::http::Status;
 use rocket::data::{self, FromDataSimple};
-use rocket::request::{self, Request, FromRequest};
+use rocket::request::Request;
 use sha1::Sha1;
 use hmac::{Hmac, Mac};
 
 use crate::queue::ArbitraryData;
-use crate::server::{SecretKeyError, secret_key_is_valid, AppState};
+use crate::server::{SecretKeyError, AppState};
 use crate::server::git::GitReference;
 
 #[allow(unused_imports)]
