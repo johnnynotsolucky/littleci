@@ -32,7 +32,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for AuthenticationPayload {
 					if parts.len() == 2 {
 						if parts[0] == "Bearer" {
 							// TODO Fetch config secret
-							let token_data = decode::<UserPayload>(&parts[1], "secret".as_ref(), &Validation::new(Algorithm::HS256));
+							let token_data = decode::<UserPayload>(&parts[1], &state.config.secret.unsecure(), &Validation::new(Algorithm::HS256));
 							return match token_data {
 								Ok(token_data) => Outcome::Success(AuthenticationPayload(Some(token_data.claims))),
 								Err(error) => Outcome::Failure((Status::Unauthorized, format!("{}", error)))
@@ -65,7 +65,7 @@ impl UserPayload {
 	}
 
 	pub fn into_token(&self, config: &AppConfig) -> String {
-		let token = encode(&Header::default(), self, "secret".as_ref()).unwrap();
+		let token = encode(&Header::default(), self, &config.secret.unsecure()).unwrap();
 		token
 	}
 }
@@ -76,15 +76,22 @@ pub fn authenticate_user(
 	password: &str
 ) -> Result<UserPayload, String>
 {
-	match config.users.get(username) {
-		Some(user) => {
-			let verified = HashedPassword::verify(&user, password);
-			if verified {
-				Ok(UserPayload::new(username))
-			} else {
-				Err("Passwords do not match".into())
+	match config.authentication_type {
+		AuthenticationType::NoAuthentication => {
+			Err("User authentication disabled".into())
+		},
+		AuthenticationType::Simple => {
+			match config.users.get(username) {
+				Some(user) => {
+					let verified = HashedPassword::verify(&user, password);
+					if verified {
+						Ok(UserPayload::new(username))
+					} else {
+						Err("Passwords do not match".into())
+					}
+				},
+				None => Err("User not found".into()),
 			}
 		},
-		None => Err("User not found".into()),
 	}
 }
