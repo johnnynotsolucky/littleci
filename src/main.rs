@@ -7,14 +7,13 @@ use std::fs::{self, create_dir_all};
 use std::process;
 use std::collections::HashMap;
 use std::convert::{Into, From};
-use std::fmt::Write;
-use sha3::{Digest, Sha3_256};
 use regex::Regex;
 use fern::colors::{Color, ColoredLevelConfig};
 use directories::ProjectDirs;
 use secstr::SecStr;
 use clap::{clap_app, ArgMatches, value_t};
 use failure::{Error, format_err};
+use argon2::{self, Config, ThreadMode, Variant, Version};
 
 mod model;
 mod server;
@@ -41,23 +40,37 @@ use log::{debug, info, warn, error};
 const DEFAULT_PORT: u16 = 8000;
 
 #[derive(Debug, Clone)]
-pub struct HashedSecret(String);
+pub struct HashedPassword(String);
 
-impl HashedSecret {
-	pub fn new(val: &str) -> Self {
-		let mut hasher = Sha3_256::new();
-		hasher.input(val.as_bytes());
-		let signature_bytes = hasher.result();
-		let mut hashed = String::new();
-		for b in signature_bytes {
-			write!(&mut hashed, "{:X}", b).expect("Unable to generate secret hash");
+impl HashedPassword {
+	pub fn new(password: &str, salt: &str) -> Self {
+		let config = Config {
+			variant: Variant::Argon2id,
+			version: Version::Version13,
+			mem_cost: 4096,
+			time_cost: 3,
+			lanes: 1,
+			thread_mode: ThreadMode::Sequential,
+			secret: &[],
+			ad: &[],
+			hash_length: 32
+		};
+		let encoded = argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &config).unwrap();
+		HashedPassword(encoded)
+	}
+
+	pub fn verify(user: &User, password: &str) -> bool {
+		match argon2::verify_encoded(&user.password, password.as_bytes()) {
+			Ok(result) => result,
+			Err(error) => {
+				warn!("Could not verify password: {}", error);
+				false
+			}
 		}
-		hashed = hashed.to_lowercase();
-		HashedSecret(hashed)
 	}
 }
 
-impl Into<String> for HashedSecret {
+impl Into<String> for HashedPassword {
 	fn into(self) -> String {
 		self.0
 	}
@@ -225,8 +238,16 @@ fn add_env_variable(matches: &ArgMatches) -> Result<String, Error> {
 fn add_user(username: &str, password: &str) -> Result<String, Error> {
 	let mut persisted_config = load_app_config()?;
 	let username = username.to_owned();
-	let password: String = HashedSecret::new(&password).into();
-	persisted_config.users.insert(username.clone(), User { username, password: password.to_owned() });
+    let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
+	let password: String = HashedPassword::new(&password, &salt).into();
+	persisted_config.users.insert(
+		username.clone(),
+		User {
+			username,
+			salt,
+			password: password.to_owned()
+		}
+	);
 
 	// TODO make reusable
 	let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {

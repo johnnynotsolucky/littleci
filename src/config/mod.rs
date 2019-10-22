@@ -81,6 +81,7 @@ pub struct PersistedConfig {
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct User {
 	pub username: String,
+	pub salt: String,
 	pub password: String,
 }
 

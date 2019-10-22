@@ -5,7 +5,7 @@ use rocket::http::Status;
 use serde_derive::{Serialize, Deserialize};
 use jsonwebtoken::{encode, decode, Header, Algorithm, Validation};
 
-use crate::HashedSecret;
+use crate::HashedPassword;
 use crate::config::AppConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,8 +66,8 @@ pub fn authenticate_user(
 {
 	match config.users.get(username) {
 		Some(user) => {
-			let user_password: String = HashedSecret::new(password).into();
-			if user.password == user_password {
+			let verified = HashedPassword::verify(&user, password);
+			if verified {
 				Ok(UserPayload::new(username))
 			} else {
 				Err("Passwords do not match".into())
