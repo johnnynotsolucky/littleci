@@ -39,7 +39,7 @@ syslog = "4.0"
 [dependencies.rocket_contrib]
 version = "0.4"
 default-features = false
-features = ["json", "serve"]
+features = ["json"]
 
 [dependencies.fern]
 version = "0.5"

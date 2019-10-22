@@ -31,6 +31,7 @@ use crate::config::{
     Repository,
 	Trigger,
 	User,
+	AuthenticationType,
 };
 use crate::queue::{QueueManager, QueueService};
 
@@ -95,7 +96,7 @@ impl From<PersistedConfig> for AppState {
             site_url: configuration.site_url.unwrap_or(configuration.network_host),
             port: configuration.port,
             log_to_syslog: configuration.log_to_syslog,
-			authentication_enabled: configuration.authentication_enabled,
+			authentication_type: configuration.authentication_type,
 			users: configuration.users,
         };
 
@@ -143,7 +144,7 @@ fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
         port,
         log_to_syslog,
         repositories: HashMap::new(),
-		authentication_enabled: true,
+		authentication_type: AuthenticationType::Simple,
 		users: HashMap::new(),
     };
 

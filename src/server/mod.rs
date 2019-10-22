@@ -29,7 +29,7 @@ pub mod response;
 pub mod cors;
 mod static_assets;
 
-use auth::{UserPayload, authenticate_user};
+use auth::{UserPayload, AuthenticationPayload, authenticate_user};
 use git::GitReference;
 use gitea::{GiteaPayload, GiteaSecret};
 use github::{GitHubPayload};
@@ -273,7 +273,7 @@ pub fn repositories(state: State<AppState>, routes: State<RouteMap>)
 }
 
 #[get("/config")]
-pub fn get_config(_user: UserPayload, state: State<AppState>)
+pub fn get_config(_auth: AuthenticationPayload, state: State<AppState>)
 	-> Result<Json<AppConfigResponse>, String>
 {
 	Ok(

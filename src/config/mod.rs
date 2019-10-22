@@ -71,7 +71,7 @@ pub struct PersistedConfig {
 	pub network_host: String,
 	pub port: u16,
 	pub log_to_syslog: bool,
-	pub authentication_enabled: bool,
+	pub authentication_type: AuthenticationType,
 	pub users: HashMap<String, User>,
 	#[serde(default)]
 	#[serde(deserialize_with = "deserialize_repository_map")]
@@ -93,7 +93,7 @@ pub struct AppConfig {
 	pub site_url: String,
 	pub port: u16,
 	pub log_to_syslog: bool,
-	pub authentication_enabled: bool,
+	pub authentication_type: AuthenticationType,
 	pub users: HashMap<String, User>,
 }
 
@@ -158,8 +158,12 @@ pub fn get_secret() -> Result<String, Error> {
 	}
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuthenticationType {
 	NoAuthentication,
 	Simple,
 }
 
+impl Default for AuthenticationType {
+	fn default() -> Self { Self::Simple }
+}
