@@ -28,6 +28,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserResponse'
+  '/repositories/{repositoryName}/jobs/{jobId}/logs/stdout':
+    get:
+      tags:
+        - logs
+      summary: Get a jobs stdout
+      operationId: getStdoutByJobId
+      parameters:
+        - name: repositoryName
+          in: path
+          description: Name of repository
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          description: Job ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            text/plain:
+              schema:
+                type: string
+      security:
+        - user_auth: []
+  '/repositories/{repositoryName}/jobs/{jobId}/logs/stderr':
+    get:
+      tags:
+        - logs
+      summary: Get a jobs stderr
+      operationId: getStderrByJobId
+      parameters:
+        - name: repositoryName
+          in: path
+          description: Name of repository
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          description: Job ID
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            text/plain:
+              schema:
+                type: string
+      security:
+        - user_auth: []
   '/repositories/{repositoryName}/jobs/{jobId}':
     get:
       tags:
@@ -54,6 +110,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Job'
+      security:
+        - user_auth: []
   '/repositories/{repositoryName}/jobs':
     get:
       tags:
@@ -76,6 +134,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Job'
+      security:
+        - user_auth: []
   '/repositories/{repositoryName}':
     get:
       tags:
@@ -96,6 +156,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Repository'
+      security:
+        - user_auth: []
   /repositories:
     get:
       tags:
@@ -111,6 +173,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Repository'
+      security:
+        - user_auth: []
   /config:
     get:
       tags:
@@ -361,6 +425,8 @@ tags:
     description: Configured repositories
   - name: jobs
     description: ''
+  - name: logs
+    description: Log endpoints
   - name: notify
     description: Trigger a job for a repository
 externalDocs:

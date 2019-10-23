@@ -254,7 +254,7 @@ pub fn notify_with_signature_with_data(
 }
 
 #[get("/repositories")]
-pub fn repositories(state: State<AppState>, routes: State<RouteMap>)
+pub fn repositories(_auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>)
 	-> Result<Json<Vec<Response<RepositoryResponse>>>, String>
 {
 	Ok(
@@ -314,7 +314,7 @@ pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json
 }
 
 #[get("/repositories/<repository>")]
-pub fn repository(repository: &RawStr, state: State<AppState>, routes: State<RouteMap>)
+pub fn repository(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>)
 	-> Result<Json<Response<RepositoryResponse>>, String>
 {
 	let repository_name = repository.as_str();
@@ -331,7 +331,7 @@ pub fn repository(repository: &RawStr, state: State<AppState>, routes: State<Rou
 }
 
 #[get("/repositories/<repository>/jobs")]
-pub fn jobs(repository: &RawStr, state: State<AppState>, routes: State<RouteMap>)
+pub fn jobs(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>)
 	-> Result<Json<Vec<Response<QueueItem>>>, String>
 {
 	let repository = repository.as_str();
@@ -357,7 +357,7 @@ pub fn jobs(repository: &RawStr, state: State<AppState>, routes: State<RouteMap>
 }
 
 #[get("/repositories/<repository>/jobs/<id>/logs/<log>")]
-pub fn log_output(repository: &RawStr, id: &RawStr, log: LogType, state: State<AppState>) -> Result<String, String> {
+pub fn log_output(repository: &RawStr, id: &RawStr, log: LogType, _auth: AuthenticationPayload, state: State<AppState>) -> Result<String, String> {
 	let repository = repository.as_str();
 	let repository = {
 		match state.repositories.get(repository) {
@@ -382,7 +382,7 @@ pub fn log_output(repository: &RawStr, id: &RawStr, log: LogType, state: State<A
 }
 
 #[get("/repositories/<repository>/jobs/<id>")]
-pub fn job(repository: &RawStr, id: &RawStr, state: State<AppState>, routes: State<RouteMap>) -> Result<Json<Response<QueueItem>>, String> {
+pub fn job(repository: &RawStr, id: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>) -> Result<Json<Response<QueueItem>>, String> {
 	let repository = repository.as_str();
 	let repository = {
 		match state.repositories.get(repository) {
