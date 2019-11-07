@@ -105,7 +105,7 @@ pub struct Response<T> {
 pub struct RepositoryResponse {
 	#[serde(rename = "repository")]
 	pub name: String,
-	pub command: String,
+	pub run: String,
 	pub working_dir: Option<String>,
 	pub variables: HashMap<String, String>,
 	pub triggers: Vec<Trigger>,
@@ -115,7 +115,7 @@ impl RepositoryResponse {
 	pub fn new(name: &str, repository: &Arc<Repository>) -> Self {
 		Self {
 			name: name.to_owned(),
-			command: repository.command.clone(),
+			run: repository.run.clone(),
 			working_dir: repository.working_dir.clone(),
 			variables: repository.variables.clone(),
 			triggers: repository.triggers.clone(),

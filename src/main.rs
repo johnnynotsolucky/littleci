@@ -14,6 +14,8 @@ use secstr::SecStr;
 use clap::{clap_app, ArgMatches, value_t};
 use failure::{Error, format_err};
 use argon2::{self, Config, ThreadMode, Variant, Version};
+use std::fmt::Write;
+use sha3::{Digest, Sha3_256};
 
 mod model;
 mod server;
@@ -25,7 +27,7 @@ use crate::server::start_server;
 use crate::config::{
     app_config_path,
 	load_app_config,
-    get_secret,
+	get_secret,
     AppConfig,
     PersistedConfig,
     Repository,
@@ -39,6 +41,29 @@ use crate::queue::{QueueManager, QueueService};
 use log::{debug, info, warn, error};
 
 const DEFAULT_PORT: u16 = 8000;
+
+#[derive(Debug, Clone)]
+pub struct HashedValue(String);
+
+impl HashedValue {
+	pub fn new(val: &str) -> Self {
+		let mut hasher = Sha3_256::new();
+		hasher.input(val.as_bytes());
+		let signature_bytes = hasher.result();
+		let mut hashed = String::new();
+		for b in signature_bytes {
+			write!(&mut hashed, "{:X}", b).expect("Unable to generate hashed value");
+		}
+		hashed = hashed.to_lowercase();
+		HashedValue(hashed)
+	}
+}
+
+impl Into<String> for HashedValue {
+	fn into(self) -> String {
+		self.0
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct HashedPassword(String);
@@ -87,7 +112,7 @@ pub struct AppState {
 
 impl From<PersistedConfig> for AppState {
     fn from(configuration: PersistedConfig) -> Self {
-		let secret: String = configuration.secret.clone();
+		let secret: String = HashedValue::new(&configuration.secret).into();
 
         let config = AppConfig {
             secret: SecStr::from(secret),
@@ -188,7 +213,7 @@ fn add_repository_config(matches: &ArgMatches) -> Result<String, Error> {
 	let triggers = vec![Trigger::Any];
 
     let repository = Repository {
-        command: matches.value_of("COMMAND").unwrap().to_owned(),
+        run: matches.value_of("RUN").unwrap().to_owned(),
         working_dir: match matches.value_of("WORKING_DIR") {
             Some(working_dir) => Some(working_dir.to_owned()),
             None => None,
@@ -245,7 +270,6 @@ fn add_user(username: &str, password: &str) -> Result<String, Error> {
 		username.clone(),
 		User {
 			username,
-			salt,
 			password: password.to_owned()
 		}
 	);
@@ -347,7 +371,7 @@ fn main() {
             (@subcommand set =>
                 (about: "Add a new repository")
                 (@arg REPOSITORY_NAME: +takes_value +required "Name of the repository")
-                (@arg COMMAND: -c --command +takes_value +required "Command which should be executed. Note: Should include the full path to the executable if it is not in $PATH")
+                (@arg RUN: -r --run +takes_value +required "Command which should be executed. Note: Should include the full path to the executable if it is not in $PATH")
                 (@arg WORKING_DIR: -w --working_dir +takes_value " Working directory for the command to run in.")
             )
 			(@subcommand set_env =>
@@ -365,7 +389,7 @@ fn main() {
 			)
 		)
         (@subcommand secret =>
-            (about: "Get the secret to authenticate notifications")
+            (about: "Get the secret for authentication")
         )
         (@subcommand serve =>
             (about: "Launch LittleCI's HTTP server")
@@ -400,10 +424,10 @@ fn main() {
     }
 
     if command_matches.subcommand_matches("secret").is_some() {
-        match get_secret() {
-            Ok(secret) => println!("{}", secret),
-            Err(error) => eprintln!("Unable to retrieve secret. {}", error),
-        }
+		match get_secret() {
+			Ok(secret) => println!("{}", secret),
+			Err(error) => eprintln!("Unable to retrieve secret. {}", error),
+		}
     }
 
     if command_matches.subcommand_matches("serve").is_some() {

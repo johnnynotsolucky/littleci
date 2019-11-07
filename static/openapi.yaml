@@ -212,7 +212,7 @@ paths:
               examples: {}
       security:
         - secret_key_header: []
-        - secret_key_query: []
+        - secret_query_param: []
     post:
       operationId: notifyRepositoryWithData
       description: Trigger job with secret key header and extra data
@@ -231,7 +231,7 @@ paths:
         description: Optional key/value pairs to be injected into a job as environment variables
       security:
         - secret_key_header: []
-        - secret_key_query: []
+        - secret_query_param: []
       responses:
         '200':
           description: OK
@@ -340,7 +340,7 @@ components:
         repository:
           type: string
           description: Repository name
-        command:
+        run:
           type: string
           description: Command to execute
         working_dir:
@@ -414,7 +414,7 @@ components:
       name: X-Hub-Signature
       type: apiKey
       in: header
-    secret_key_query:
+    secret_query_param:
       name: key
       type: apiKey
       in: query

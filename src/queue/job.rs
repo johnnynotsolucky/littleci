@@ -114,7 +114,7 @@ impl JobRunner for CommandRunner {
 									};
 
 									command
-										.args(&["-c", &repository.command.to_string()])
+										.args(&["-c", &repository.run.to_string()])
 										.stdout(Stdio::from(stdout_log_f))
 										.stderr(Stdio::from(stderr_log_f));
 

@@ -14,7 +14,7 @@ use serde_derive::{Serialize, Deserialize};
 use secstr::SecStr;
 use base64::encode;
 
-use crate::{AppState};
+use crate::AppState;
 use crate::config::{Trigger, GitTrigger, PersistedConfig};
 use crate::queue::{QueueItem, ArbitraryData};
 
@@ -24,14 +24,12 @@ use log::{debug, info, warn, error};
 mod auth;
 mod git;
 mod github;
-mod gitea;
 pub mod response;
 pub mod cors;
 mod static_assets;
 
 use auth::{UserPayload, AuthenticationPayload, authenticate_user};
 use git::GitReference;
-use gitea::{GiteaPayload, GiteaSecret};
 use github::{GitHubPayload};
 use response::{
 	Routes,
@@ -63,7 +61,6 @@ pub enum SecretKeyError {
 fn secret_key_is_valid(secret: &str, state: &AppState) -> bool {
 	let secret = SecStr::from(secret);
 	let state_secret = &state.config.secret;
-
 	&secret == state_secret
 }
 
@@ -81,7 +78,21 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 					Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
 				}
 			},
-			_ => Outcome::Failure((Status::BadRequest, SecretKeyError::Missing))
+			_ => {
+				let secret_key: Option<&RawStr> = request.get_query_value("key").and_then(|r| r.ok());
+				match secret_key {
+					Some(secret_key) => {
+						let secret_key = secret_key.as_str();
+						let state = request.guard::<State<AppState>>().unwrap();
+						if secret_key_is_valid(&secret_key, &state) {
+							Outcome::Success(SecretKey)
+						} else {
+							Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
+						}
+					},
+					_ => Outcome::Failure((Status::BadRequest, SecretKeyError::Missing)),
+				}
+			}
 		}
 	}
 }
@@ -218,38 +229,6 @@ pub fn notify_github(
 			Ok(response) => Ok(Json(JobOrSkipped::Job(response))),
 			Err(error) => Err(error)
 		}
-	}
-}
-
-
-#[get("/notify/<repository>?<key>")]
-pub fn notify_with_signature(
-	key: &RawStr,
-	repository: &RawStr,
-	state: State<AppState>,
-	routes: State<RouteMap>
-	) -> Result<Json<Response<QueueItem>>, String>
-{
-	if secret_key_is_valid(key.as_str(), &state) {
-		notify_job(repository, ArbitraryData::new(HashMap::new()), state.inner(), routes.inner())
-	} else {
-		Err("Invalid Signature".into())
-	}
-}
-
-#[post("/notify/<repository>?<key>", format = "json", data = "<data>")]
-pub fn notify_with_signature_with_data(
-	key: &RawStr,
-	repository: &RawStr,
-	data: Json<ArbitraryData>,
-	state: State<AppState>,
-	routes: State<RouteMap>
-	) -> Result<Json<Response<QueueItem>>, String>
-{
-	if secret_key_is_valid(key.as_str(), &state) {
-		notify_job(repository, data.into_inner(), state.inner(), routes.inner())
-	} else {
-		Err("Invalid Signature".into())
 	}
 }
 
@@ -471,10 +450,10 @@ pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 		Ok(config) => {
 			let routes = routes![
 				get_config,
+				// notify_with_secret,
 				notify,
+				// notify_with_secret_with_data,
 				notify_with_data,
-				notify_with_signature,
-				notify_with_signature_with_data,
 				notify_github,
 				repositories,
 				repository,

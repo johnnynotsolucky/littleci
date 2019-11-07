@@ -81,7 +81,6 @@ pub struct PersistedConfig {
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct User {
 	pub username: String,
-	pub salt: String,
 	pub password: String,
 }
 
@@ -99,7 +98,7 @@ pub struct AppConfig {
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Repository {
-	pub command: String,
+	pub run: String,
 	pub working_dir: Option<String>,
 	pub webhooks: Option<Vec<String>>,
 	#[serde(default)]
@@ -150,9 +149,7 @@ pub fn get_secret() -> Result<String, Error> {
 			if let Err(err) = str::from_utf8(s) {
 				eprintln!("{}", err);
 			}
-			Ok(
-				str::from_utf8(s).unwrap().into()
-			)
+			Ok(str::from_utf8(s).unwrap().into())
 		},
 		Err(_) => Err(format_err!("No configuration found. Please configure LittleCI first.")),
 	}
