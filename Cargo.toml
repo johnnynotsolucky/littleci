@@ -1,7 +1,7 @@
 [package]
 name = "littleci"
 version = "0.1.0"
-authors = ["Tyrone Tudehope <hi@tyrone.dev>"]
+authors = ["Tyrone Tudehope"]
 edition = "2018"
 
 [dependencies]
