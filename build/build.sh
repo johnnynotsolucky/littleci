@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# TODO build the correct branch when necessary
+git pull
+
 (cd swagger/ && npm ci && npm run build)
 
 ./build/docker/build-images.sh
