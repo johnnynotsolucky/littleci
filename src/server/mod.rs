@@ -3,11 +3,12 @@ use std::env;
 use std::fs::read_to_string;
 use std::path::PathBuf;
 use std::io::Cursor;
-use rocket::http::{RawStr, Status, ContentType};
+use rocket::http::{RawStr, Status, ContentType, Method};
 use rocket::{Outcome, State, get, post, catch, routes, catchers};
 use rocket::config::{Config, Environment};
 use rocket::request::{self, Request, FromRequest, FromParam};
 use rocket::response::{Responder, Redirect};
+use rocket::response::status::Custom;
 use rocket_contrib::json::Json;
 use failure::{Error, Fail, format_err};
 use serde_derive::{Serialize, Deserialize};
@@ -25,7 +26,6 @@ mod auth;
 mod git;
 mod github;
 pub mod response;
-pub mod cors;
 mod static_assets;
 
 use auth::{UserPayload, AuthenticationPayload, authenticate_user};
@@ -41,7 +41,6 @@ use response::{
 	meta_for_queue_item,
 	meta_for_repository
 };
-use cors::CORS;
 use static_assets::{ApiDefinitionUi, StaticAssets};
 
 pub struct SecretKey;
@@ -276,7 +275,7 @@ pub struct LoginResponse {
 }
 
 #[post("/login", format = "json", data = "<data>")]
-pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json<LoginResponse>, String>
+pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json<LoginResponse>, Custom<Json<ErrorResponse>>>
 {
 	let data = data.into_inner();
 	let payload = authenticate_user(&state.config, &data.username, &data.password);
@@ -288,7 +287,7 @@ pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json
 			};
 			Ok(Json(response))
 		},
-		Err(_) => Err("Username or password incorrect".into()),
+		Err(_) => Err(Custom(Status::Unauthorized, Json(ErrorResponse::new("Username or password incorrect".into())))),
 	}
 }
 
@@ -434,6 +433,27 @@ pub fn not_found_handler() -> Json<ErrorResponse> {
 	Json(ErrorResponse::new("Not found".into()))
 }
 
+use rocket_cors::{
+    AllowedHeaders, AllowedOrigins, // 2.
+    Cors, CorsOptions // 3.
+};
+
+pub fn create_cors_options() -> Cors {
+
+	CorsOptions {
+		allowed_origins: AllowedOrigins::all(),
+		allowed_methods: vec![Method::Get, Method::Post]
+		   .into_iter()
+		   .map(From::from)
+		   .collect(),
+		allowed_headers: AllowedHeaders::all(),
+		allow_credentials: true,
+		..Default::default()
+	}
+	.to_cors()
+	.expect("Unable to build CORS Options")
+}
+
 pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 	let app_state = AppState::from(persisted_config.clone());
 
@@ -472,7 +492,7 @@ pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 			env::set_var("ROCKET_CLI_COLORS", "off");
 
 			let server = rocket::custom(config)
-				.attach(CORS)
+				.attach(create_cors_options())
 				.manage(app_state)
 				.manage(route_map)
 				.register(catchers![not_found_handler])
