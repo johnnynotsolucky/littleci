@@ -115,7 +115,7 @@ impl From<PersistedConfig> for AppState {
 		let secret: String = HashedValue::new(&configuration.secret).into();
 
         let config = AppConfig {
-            secret: SecStr::from(secret),
+            secret: SecStr::from(secret.clone()),
             data_dir: configuration.data_dir,
             network_host: configuration.network_host.clone(),
             site_url: configuration.site_url.unwrap_or(configuration.network_host),
@@ -126,8 +126,16 @@ impl From<PersistedConfig> for AppState {
         };
 
         let mut repositories = HashMap::new();
-        for (name, repository) in configuration.repositories.iter() {
-            repositories.insert(name.to_owned(), Arc::new(repository.clone()));
+        for repository in configuration.repositories.iter() {
+			let repository_slug = kebab_case(&repository.name);
+			let repository_secret: String = HashedValue::new(
+					&format!("{}{}", &secret, repository_slug)
+				)
+				.into();
+			let mut repository = repository.clone();
+			repository.secret = Some(SecStr::from(repository_secret));
+
+            repositories.insert(kebab_case(&repository.name), Arc::new(repository.clone()));
         }
 
         let queue_manager = QueueManager::new(Arc::new(config.clone()), &repositories);
@@ -168,7 +176,7 @@ fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
         site_url,
         port,
         log_to_syslog,
-        repositories: HashMap::new(),
+        repositories: Vec::new(),
 		authentication_type: AuthenticationType::Simple,
 		users: HashMap::new(),
     };
@@ -213,6 +221,7 @@ fn add_repository_config(matches: &ArgMatches) -> Result<String, Error> {
 	let triggers = vec![Trigger::Any];
 
     let repository = Repository {
+		name: matches.value_of("REPOSITORY_NAME").unwrap().to_owned(),
         run: matches.value_of("RUN").unwrap().to_owned(),
         working_dir: match matches.value_of("WORKING_DIR") {
             Some(working_dir) => Some(working_dir.to_owned()),
@@ -222,9 +231,7 @@ fn add_repository_config(matches: &ArgMatches) -> Result<String, Error> {
         ..Default::default()
     };
 
-    let repository_name = kebab_case(&matches.value_of("REPOSITORY_NAME").unwrap()).to_owned();
-
-    persisted_config.repositories.insert(repository_name, repository);
+    persisted_config.repositories.push(repository);
 
     let json = serde_json::to_string_pretty(&persisted_config)?;
     let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
@@ -232,33 +239,6 @@ fn add_repository_config(matches: &ArgMatches) -> Result<String, Error> {
     let file_path = format!("{}/Settings.json", config_dir);
     fs::write(&file_path, json)?;
     Ok(format!("Repository config added to {}", file_path))
-}
-
-fn add_env_variable(matches: &ArgMatches) -> Result<String, Error> {
-	let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
-		Some(project_dirs) => project_dirs,
-		None => return Err(format_err!("Invalid $HOME path.")),
-	};
-
-	let mut persisted_config = load_app_config()?;
-
-	let repository_name = matches.value_of("REPOSITORY_NAME").unwrap();
-	let repository = persisted_config.repositories.get_mut(repository_name);
-	match repository {
-		Some(repository) => {
-			let variable_name = matches.value_of("VARIABLE_NAME").unwrap().to_owned();
-			let variable_value = matches.value_of("VALUE").unwrap().to_owned();
-			repository.variables.insert(variable_name, variable_value);
-
-			let json = serde_json::to_string_pretty(&persisted_config)?;
-			let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
-			create_dir_all(&config_dir)?;
-			let file_path = format!("{}/Settings.json", config_dir);
-			fs::write(&file_path, json)?;
-			Ok("Repository config updated".into())
-		},
-		None => Err(format_err!("Repository not found: {}", repository_name)),
-	}
 }
 
 fn add_user(username: &str, password: &str) -> Result<String, Error> {
@@ -414,13 +394,6 @@ fn main() {
                 Err(error) => eprintln!("Unable to update repository config. {}", error),
             }
         }
-
-		if let Some(matches) = matches.subcommand_matches("set_env") {
-			match add_env_variable(matches) {
-				Ok(message) => println!("{}", message),
-				Err(error) => eprintln!("Unable to update repository config. {}", error),
-			}
-		}
     }
 
     if command_matches.subcommand_matches("secret").is_some() {

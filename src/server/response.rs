@@ -103,22 +103,33 @@ pub struct Response<T> {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RepositoryResponse {
-	#[serde(rename = "repository")]
+	pub slug: String,
 	pub name: String,
 	pub run: String,
 	pub working_dir: Option<String>,
 	pub variables: HashMap<String, String>,
 	pub triggers: Vec<Trigger>,
+	pub secret: String,
 }
 
 impl RepositoryResponse {
-	pub fn new(name: &str, repository: &Arc<Repository>) -> Self {
+	pub fn new(slug: &str, repository: &Arc<Repository>) -> Self {
+
 		Self {
-			name: name.to_owned(),
+			slug: slug.to_owned(),
+			name: repository.name.clone(),
 			run: repository.run.clone(),
 			working_dir: repository.working_dir.clone(),
 			variables: repository.variables.clone(),
 			triggers: repository.triggers.clone(),
+			secret: str::from_utf8(
+					repository.secret
+						.clone()
+						.expect("Expected repository secret")
+						.unsecure()
+				)
+				.expect("Invalid secret hash")
+				.into(),
 		}
 	}
 }
@@ -173,7 +184,7 @@ pub fn meta_for_repository(app_config: &AppConfig, routes: &RouteMap, repository
 			.get("repository")
 			.unwrap()
 			.url(vec![
-				("repository", &repository.name),
+				("repository", &repository.slug),
 			])
 	);
 
@@ -182,7 +193,7 @@ pub fn meta_for_repository(app_config: &AppConfig, routes: &RouteMap, repository
 			.get("jobs")
 			.unwrap()
 			.url(vec![
-				("repository", &repository.name),
+				("repository", &repository.slug),
 			])
 	);
 

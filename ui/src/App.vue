@@ -72,9 +72,9 @@
 
 <script lang="ts">
 import Vue from 'vue'
-import Component from 'vue-class-component'
+import { Component, Watch } from 'vue-property-decorator'
 import Login from './components/Login.vue'
-import {state} from './store/state'
+import {state, Repository} from './store/state'
 
 @Component({
   props: {
@@ -86,18 +86,33 @@ import {state} from './store/state'
 })
 export default class App extends Vue {
   state = state
-
   drawer = null
+  repositories: Repository[] = []
 
-  items = [
-    { icon: 'fas fa-home', text: 'Home', to: '/' },
-    { divider: true },
-    { text: 'Repo A', to: '/repo-a' },
-    { text: 'Repo B', to: '/repo-b' },
-    { divider: true },
-    { icon: 'fas fa-cog', text: 'Config', to: '/config' },
-    { icon: 'fas fa-globe-africa', text: 'API Docs', href: '/swagger/index.html' },
-  ]
+  get items() {
+    return [
+      { icon: 'fas fa-home', text: 'Home', to: '/' },
+      { divider: true },
+      ...this.mappedRepositories,
+      { divider: true },
+      { icon: 'fas fa-cog', text: 'Config', to: '/config' },
+      { icon: 'fas fa-globe-africa', text: 'API Docs', href: '/swagger/index.html' },
+    ]
+  }
+
+  get mappedRepositories() {
+    return this.repositories.map((repository) => ({
+      text: repository.name,
+      to : `/repositories/${repository.slug}`,
+    }))
+  }
+
+  @Watch('state.loggedIn', { immediate: true })
+  async onLoggedInChanged(loggedIn: boolean) {
+    if (loggedIn) {
+      this.repositories = await this.state.getRepositories()
+    }
+  }
 }
 </script>
 

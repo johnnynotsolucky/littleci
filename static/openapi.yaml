@@ -337,7 +337,10 @@ components:
     Repository:
       type: object
       properties:
-        repository:
+        slug:
+          type: string
+          description: Repository identifier
+        name:
           type: string
           description: Repository name
         run:
@@ -350,6 +353,9 @@ components:
           type: object
         triggers:
           type: object
+        secret:
+          type: string
+          description: Secret to trigger jobs
         _meta:
           type: object
     Config:

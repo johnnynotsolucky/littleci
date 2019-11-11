@@ -1,67 +1,12 @@
 use std::collections::HashMap;
-use std::fmt;
-use std::marker::PhantomData;
 use std::fs::read_to_string;
 use std::str;
-use serde::{Deserializer};
-use serde::de::{Visitor, MapAccess};
 use serde_derive::{Serialize, Deserialize};
 use failure::{Error, format_err};
 use directories::ProjectDirs;
 use secstr::SecStr;
 
-use crate::{AppState, kebab_case};
-
-type RepositoryMap = HashMap<String, Repository>;
-
-fn deserialize_repository_map<'de, D>(d: D) -> Result<RepositoryMap, D::Error>
-where D: Deserializer<'de>,
-{
-	match d.deserialize_map(RepositoryMapVisitor::new()) {
-		Ok(map) => {
-			let mut sanitized = HashMap::new();
-			map.iter().for_each(|(key, val)| {
-				sanitized.insert(kebab_case(&key), val.clone());
-			});
-
-			Ok(sanitized)
-		},
-		Err(error) => Err(error),
-	}
-}
-
-#[derive(Debug)]
-struct RepositoryMapVisitor {
-	marker: PhantomData<fn() -> RepositoryMap>,
-}
-
-impl RepositoryMapVisitor {
-	fn new() -> Self {
-		RepositoryMapVisitor {
-			marker: PhantomData,
-		}
-	}
-}
-
-impl<'de> Visitor<'de> for RepositoryMapVisitor {
-	type Value = RepositoryMap;
-
-	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("Map of repository data")
-	}
-
-	fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
-	where
-		M: MapAccess<'de>,
-	{
-		let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
-		while let Some((key, value)) = access.next_entry()? {
-			map.insert(key, value);
-		}
-
-		Ok(map)
-	}
-}
+use crate::{AppState};
 
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct PersistedConfig {
@@ -74,8 +19,7 @@ pub struct PersistedConfig {
 	pub authentication_type: AuthenticationType,
 	pub users: HashMap<String, User>,
 	#[serde(default)]
-	#[serde(deserialize_with = "deserialize_repository_map")]
-	pub repositories: RepositoryMap,
+	pub repositories: Vec<Repository>,
 }
 
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
@@ -98,6 +42,7 @@ pub struct AppConfig {
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Repository {
+	pub name: String,
 	pub run: String,
 	pub working_dir: Option<String>,
 	pub webhooks: Option<Vec<String>>,
@@ -105,6 +50,8 @@ pub struct Repository {
 	pub variables: HashMap<String, String>,
 	#[serde(default)]
 	pub triggers: Vec<Trigger>,
+	#[serde(skip)]
+	pub secret: Option<SecStr>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

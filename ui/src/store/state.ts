@@ -16,13 +16,39 @@ interface Config {
   log_to_syslog: boolean,
 }
 
+export interface Repository {
+  slug: string,
+  name: string,
+  run: string,
+  working_dir: string,
+  variables: {},
+  triggers: {},
+  secret: string,
+}
+
+export interface Job {
+  id: string,
+  repository: string,
+  status: string,
+  exit_code: number,
+  data: object,
+  created_at: Date,
+  updated_at: Date,
+  logs: Log[],
+}
+
+export interface Log {
+  status: string,
+  exit_code: number,
+  created_at: Date,
+}
+
 interface ErrorResponse {
   message: string,
 }
 
 export default class State {
   @observable user: User | null = null
-
   @observable config: Config | null = null
 
   @computed get loggedIn() {
@@ -47,6 +73,69 @@ export default class State {
     }
 
     this.user = await response.json()
+  }
+
+  @action.bound async getRepositories(): Promise<Repository[]> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await fetch(`${baseUrl}/repositories`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return await response.json()
+  }
+
+  @action.bound async getRepository(slug: string): Promise<Repository> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await fetch(`${baseUrl}/repositories/${slug}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return await response.json()
+  }
+
+  @action.bound async getRepositoryJobs(repository: string): Promise<Job[]> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await fetch(`${baseUrl}/repositories/${repository}/jobs`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return await response.json()
   }
 
   @action.bound async loadConfig() {

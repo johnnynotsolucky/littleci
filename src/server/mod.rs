@@ -16,7 +16,7 @@ use secstr::SecStr;
 use base64::encode;
 
 use crate::AppState;
-use crate::config::{Trigger, GitTrigger, PersistedConfig};
+use crate::config::{Trigger, GitTrigger, PersistedConfig, Repository};
 use crate::queue::{QueueItem, ArbitraryData};
 
 #[allow(unused_imports)]
@@ -57,21 +57,32 @@ pub enum SecretKeyError {
 	Unknown,
 }
 
-fn secret_key_is_valid(secret: &str, state: &AppState) -> bool {
-	let secret = SecStr::from(secret);
-	let state_secret = &state.config.secret;
-	&secret == state_secret
+fn secret_key_is_valid(secret: &str, repository: &Repository) -> bool {
+	let secret = Some(SecStr::from(secret));
+	let repository_secret = &repository.secret;
+	&secret == repository_secret
 }
+
+const NOTIFY_ROUTE_SLUG_INDEX: usize = 1;
 
 impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 	type Error = SecretKeyError;
 
 	fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, SecretKeyError> {
+		let repository_slug = request
+			.get_param(NOTIFY_ROUTE_SLUG_INDEX)
+			.and_then(|r: Result<&RawStr, _>| r.ok())
+			.unwrap()
+			.as_str();
+
 		let secret_key = request.headers().get("x-secret-key").next();
 		match secret_key {
 			Some(secret_key) => {
 				let state = request.guard::<State<AppState>>().unwrap();
-				if secret_key_is_valid(&secret_key, &state) {
+				if secret_key_is_valid(
+					&secret_key,
+					&state.repositories.get(repository_slug).unwrap()
+				) {
 					Outcome::Success(SecretKey)
 				} else {
 					Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
@@ -83,7 +94,10 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 					Some(secret_key) => {
 						let secret_key = secret_key.as_str();
 						let state = request.guard::<State<AppState>>().unwrap();
-						if secret_key_is_valid(&secret_key, &state) {
+						if secret_key_is_valid(
+							&secret_key,
+							&state.repositories.get(repository_slug).unwrap()
+						) {
 							Outcome::Success(SecretKey)
 						} else {
 							Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
