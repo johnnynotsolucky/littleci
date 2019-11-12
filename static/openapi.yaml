@@ -28,40 +28,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserResponse'
-  '/repositories/{repositoryName}/jobs/{jobId}/logs/stdout':
+  '/repositories/{repositoryName}/jobs/{jobId}/output':
     get:
       tags:
         - logs
-      summary: Get a jobs stdout
-      operationId: getStdoutByJobId
-      parameters:
-        - name: repositoryName
-          in: path
-          description: Name of repository
-          required: true
-          schema:
-            type: string
-        - name: jobId
-          in: path
-          description: Job ID
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: successful operation
-          content:
-            text/plain:
-              schema:
-                type: string
-      security:
-        - user_auth: []
-  '/repositories/{repositoryName}/jobs/{jobId}/logs/stderr':
-    get:
-      tags:
-        - logs
-      summary: Get a jobs stderr
-      operationId: getStderrByJobId
+      summary: Get a jobs output log
+      operationId: getOutputByJobId
       parameters:
         - name: repositoryName
           in: path

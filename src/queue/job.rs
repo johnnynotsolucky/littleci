@@ -78,8 +78,7 @@ impl JobRunner for CommandRunner {
 
 							match create_dir_all(&execution_dir) {
 								Ok(_) => {
-									let stdout_log_f = File::create(format!("{}/stdout.log", &execution_dir));
-									let stderr_log_f = File::create(format!("{}/stderr.log", &execution_dir));
+									let stdout_log_f = File::create(format!("{}/output.log", &execution_dir));
 
 									let stdout_log_f = match stdout_log_f {
 										Ok(stdio) => stdio,
@@ -88,6 +87,8 @@ impl JobRunner for CommandRunner {
 											return
 										},
 									};
+
+									let stderr_log_f = stdout_log_f.try_clone();
 
 									let stderr_log_f = match stderr_log_f {
 										Ok(stdio) => stdio,

@@ -6,7 +6,7 @@ use std::io::Cursor;
 use rocket::http::{RawStr, Status, ContentType, Method};
 use rocket::{Outcome, State, get, post, catch, routes, catchers};
 use rocket::config::{Config, Environment};
-use rocket::request::{self, Request, FromRequest, FromParam};
+use rocket::request::{self, Request, FromRequest};
 use rocket::response::{Responder, Redirect};
 use rocket::response::status::Custom;
 use rocket_contrib::json::Json;
@@ -106,35 +106,6 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 					_ => Outcome::Failure((Status::BadRequest, SecretKeyError::Missing)),
 				}
 			}
-		}
-	}
-}
-
-#[derive(Deserialize, Debug)]
-pub enum LogType {
-	Stdout,
-	Stderr,
-}
-
-impl Into<String> for LogType {
-	fn into(self) -> String {
-		match self {
-			Self::Stdout => "stdout".into(),
-			Self::Stderr => "stderr".into(),
-		}
-	}
-}
-
-impl<'a> FromParam<'a> for LogType {
-	type Error = Error;
-
-	fn from_param(param: &'a RawStr) -> Result<Self, Self::Error> {
-		let param = param.as_str();
-
-		match param {
-			"stdout" => Ok(LogType::Stdout),
-			"stderr" => Ok(LogType::Stderr),
-			_ => Err(format_err!("Invalid log type")),
 		}
 	}
 }
@@ -348,8 +319,13 @@ pub fn jobs(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppS
 	}
 }
 
-#[get("/repositories/<repository>/jobs/<id>/logs/<log>")]
-pub fn log_output(repository: &RawStr, id: &RawStr, log: LogType, _auth: AuthenticationPayload, state: State<AppState>) -> Result<String, String> {
+#[get("/repositories/<repository>/jobs/<id>/output")]
+pub fn log_output(
+	repository: &RawStr,
+	id: &RawStr,
+	_auth: AuthenticationPayload,
+	state: State<AppState>
+) -> Result<String, String> {
 	let repository = repository.as_str();
 	let repository = {
 		match state.repositories.get(repository) {
@@ -362,11 +338,10 @@ pub fn log_output(repository: &RawStr, id: &RawStr, log: LogType, _auth: Authent
 
 	match state.queue_manager.job(&repository, &id) {
 		Ok(job) => {
-			let log: String = log.into();
-			let log_output = read_to_string(format!("{}/jobs/{}/{}.log", &state.config.data_dir, &job.id, &log));
+			let log_output = read_to_string(format!("{}/jobs/{}/output.log", &state.config.data_dir, &job.id));
 			match log_output {
 				Ok(log_output) => Ok(log_output),
-				Err(error) => Err(format!("Unable to read log file {} for job {}. {}", &log, &id, error)),
+				Err(error) => Err(format!("Unable to read output file for job {}. {}", &id, error)),
 			}
 		},
 		Err(error) => Err(format!("Unable to fetch jobs for repository {}. {}", repository, error)),

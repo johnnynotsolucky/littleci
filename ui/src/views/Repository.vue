@@ -83,7 +83,7 @@ export default class Repository extends Vue {
   }
 
   onItemClick(item: Job) {
-    this.$router.push({ name: `/repositories/${this.slug}/jobs/${item.id}` })
+    this.$router.push(`/repositories/${this.slug}/jobs/${item.id}`)
   }
 }
 </script>

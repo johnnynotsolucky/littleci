@@ -138,6 +138,48 @@ export default class State {
     return await response.json()
   }
 
+  @action.bound async getJob(repository: string, jobId: string): Promise<Job> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await fetch(`${baseUrl}/repositories/${repository}/jobs/${jobId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return await response.json()
+  }
+
+  @action.bound async getJobOutput(repository: string, jobId: string): Promise<string> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await fetch(`${baseUrl}/repositories/${repository}/jobs/${jobId}/output`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return await response.text()
+  }
+
   @action.bound async loadConfig() {
     if (!this.user) {
       throw new Error('Not logged in')

@@ -91,8 +91,6 @@ export default class App extends Vue {
 
   get items() {
     return [
-      { icon: 'fas fa-home', text: 'Home', to: '/' },
-      { divider: true },
       ...this.mappedRepositories,
       { divider: true },
       { icon: 'fas fa-cog', text: 'Config', to: '/config' },

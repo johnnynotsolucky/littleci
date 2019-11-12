@@ -2,6 +2,7 @@ import Vue from 'vue'
 import Router from 'vue-router'
 import Home from './views/Home.vue'
 import Repository from './views/Repository.vue'
+import JobOutput from './views/JobOutput.vue'
 
 Vue.use(Router)
 
@@ -18,6 +19,11 @@ export default new Router({
       path: '/repositories/:repository',
       name: 'repository',
       component: Repository,
+    },
+    {
+      path: '/repositories/:repository/jobs/:jobId',
+      name: 'job_output',
+      component: JobOutput,
     },
     {
       path: '/config',
