@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use rocket::{State, Outcome};
 use rocket::request::{self, Request, FromRequest};
@@ -7,6 +8,7 @@ use jsonwebtoken::{encode, decode, Header, Algorithm, Validation};
 
 use crate::{AppState, HashedPassword};
 use crate::config::{AppConfig, AuthenticationType};
+use crate::model::Users;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPayload {
@@ -71,7 +73,7 @@ impl UserPayload {
 }
 
 pub fn authenticate_user(
-	config: &AppConfig,
+	config: Arc<AppConfig>,
 	username: &str,
 	password: &str
 ) -> Result<UserPayload, String>
@@ -81,9 +83,11 @@ pub fn authenticate_user(
 			Err("User authentication disabled".into())
 		},
 		AuthenticationType::Simple => {
-			match config.users.get(username) {
+			let users = Users::new(config);
+			let user_record = users.find_by_username(username);
+			match user_record {
 				Some(user) => {
-					let verified = HashedPassword::verify(&user, password);
+					let verified = HashedPassword::verify(&user.password, password);
 					if verified {
 						Ok(UserPayload::new(username))
 					} else {

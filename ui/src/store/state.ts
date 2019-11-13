@@ -47,6 +47,17 @@ interface ErrorResponse {
   message: string,
 }
 
+const makeRequest = async (url: string, options: object): Promise<Response> => {
+    const response = await fetch(url, options)
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return response
+}
+
 export default class State {
   @observable user: User | null = null
   @observable config: Config | null = null
@@ -56,7 +67,7 @@ export default class State {
   }
 
   @action.bound async login(username: string, password: string) {
-    const response = await fetch(`${baseUrl}/login`, {
+    const response = await makeRequest(`${baseUrl}/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -66,11 +77,6 @@ export default class State {
         password,
       }),
     })
-
-    if (!response.ok) {
-      const responseObject: ErrorResponse = await response.json()
-      throw new Error(responseObject.message)
-    }
 
     this.user = await response.json()
   }

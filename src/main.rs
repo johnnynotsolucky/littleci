@@ -32,7 +32,6 @@ use crate::config::{
     PersistedConfig,
     Repository,
 	Trigger,
-	User,
 	AuthenticationType,
 };
 use crate::queue::{QueueManager, QueueService};
@@ -41,6 +40,15 @@ use crate::queue::{QueueManager, QueueService};
 use log::{debug, info, warn, error};
 
 const DEFAULT_PORT: u16 = 8000;
+
+pub const ALPHA_NUMERIC: [char; 62] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c',
+    'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r',
+    's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G',
+    'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
+    'W', 'X', 'Y', 'Z'
+];
+
 
 #[derive(Debug, Clone)]
 pub struct HashedValue(String);
@@ -85,8 +93,8 @@ impl HashedPassword {
 		HashedPassword(encoded)
 	}
 
-	pub fn verify(user: &User, password: &str) -> bool {
-		match argon2::verify_encoded(&user.password, password.as_bytes()) {
+	pub fn verify(input_password: &str, stored_password: &str) -> bool {
+		match argon2::verify_encoded(&input_password, stored_password.as_bytes()) {
 			Ok(result) => result,
 			Err(error) => {
 				warn!("Could not verify password: {}", error);
@@ -122,7 +130,6 @@ impl From<PersistedConfig> for AppState {
             port: configuration.port,
             log_to_syslog: configuration.log_to_syslog,
 			authentication_type: configuration.authentication_type,
-			users: configuration.users,
         };
 
         let mut repositories = HashMap::new();
@@ -178,7 +185,6 @@ fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
         log_to_syslog,
         repositories: Vec::new(),
 		authentication_type: AuthenticationType::Simple,
-		users: HashMap::new(),
     };
 
     let json = serde_json::to_string_pretty(&persisted_config);
@@ -241,31 +247,31 @@ fn add_repository_config(matches: &ArgMatches) -> Result<String, Error> {
     Ok(format!("Repository config added to {}", file_path))
 }
 
-fn add_user(username: &str, password: &str) -> Result<String, Error> {
-	let mut persisted_config = load_app_config()?;
-	let username = username.to_owned();
-    let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
-	let password: String = HashedPassword::new(&password, &salt).into();
-	persisted_config.users.insert(
-		username.clone(),
-		User {
-			username,
-			password: password.to_owned()
-		}
-	);
-
-	// TODO make reusable
-	let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
-		Some(project_dirs) => project_dirs,
-		None => return Err(format_err!("Invalid $HOME path.")),
-	};
-	let json = serde_json::to_string_pretty(&persisted_config)?;
-	let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
-	create_dir_all(&config_dir)?;
-	let file_path = format!("{}/Settings.json", config_dir);
-	fs::write(&file_path, json)?;
-	Ok("User added".into())
-}
+// fn add_user(username: &str, password: &str) -> Result<String, Error> {
+//     let mut persisted_config = load_app_config()?;
+//     let username = username.to_owned();
+//     let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
+//     let password: String = HashedPassword::new(&password, &salt).into();
+//     persisted_config.users.insert(
+//         username.clone(),
+//         User {
+//             username,
+//             password: password.to_owned()
+//         }
+//     );
+//
+//     // TODO make reusable
+//     let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
+//         Some(project_dirs) => project_dirs,
+//         None => return Err(format_err!("Invalid $HOME path.")),
+//     };
+//     let json = serde_json::to_string_pretty(&persisted_config)?;
+//     let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
+//     create_dir_all(&config_dir)?;
+//     let file_path = format!("{}/Settings.json", config_dir);
+//     fs::write(&file_path, json)?;
+//     Ok("User added".into())
+// }
 
 fn setup_logger(log_to_syslog: bool) -> Result<(), Error> {
     let colors_line = ColoredLevelConfig::new()
@@ -361,13 +367,6 @@ fn main() {
 				(@arg VALUE: +takes_value +required "Value of the variable")
 			)
         )
-		(@subcommand users =>
-			(about: "Manage users")
-			(@subcommand add =>
-				(about: "Add a new user")
-				(@arg USERNAME: +takes_value +required "Username")
-			)
-		)
         (@subcommand secret =>
             (about: "Get the secret for authentication")
         )
@@ -414,22 +413,5 @@ fn main() {
             Err(_) => eprintln!("No configuration found. Please configure LittleCI first."),
         }
     }
-
-	if let Some(matches) = command_matches.subcommand_matches("users") {
-		if let Some(matches) = matches.subcommand_matches("add") {
-			let password = rpassword::read_password_from_tty(Some("Password: ")).unwrap();
-			let confirm = rpassword::read_password_from_tty(Some("Confirm password: ")).unwrap();
-			if password != confirm {
-				eprintln!("Passwords do not match.");
-			} else {
-				let username = matches.value_of("USERNAME").unwrap();
-
-				match add_user(username, &password) {
-					Ok(message) => println!("{}", message),
-					Err(error) => eprintln!("Unable to add user: {}", error),
-				}
-			}
-		}
-	}
 }
 

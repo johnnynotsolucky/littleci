@@ -17,15 +17,8 @@ pub struct PersistedConfig {
 	pub port: u16,
 	pub log_to_syslog: bool,
 	pub authentication_type: AuthenticationType,
-	pub users: HashMap<String, User>,
 	#[serde(default)]
 	pub repositories: Vec<Repository>,
-}
-
-#[derive(Deserialize, Default, Serialize, Debug, Clone)]
-pub struct User {
-	pub username: String,
-	pub password: String,
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +30,6 @@ pub struct AppConfig {
 	pub port: u16,
 	pub log_to_syslog: bool,
 	pub authentication_type: AuthenticationType,
-	pub users: HashMap<String, User>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]

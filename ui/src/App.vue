@@ -92,9 +92,12 @@ export default class App extends Vue {
   get items() {
     return [
       ...this.mappedRepositories,
+      { icon: 'fas fa-plus', text: 'New Repository' },
+      { icon: 'fas fa-tasks', text: 'Manage Repositories', to: '/manage/repositories' },
       { divider: true },
+      { icon: 'fas fa-users', text: 'Users', to: '/manage/users' },
       { icon: 'fas fa-cog', text: 'Config', to: '/config' },
-      { icon: 'fas fa-globe-africa', text: 'API Docs', href: '/swagger/index.html' },
+      { icon: 'fas fa-question-circle', text: 'API Docs', href: '/swagger/index.html' },
     ]
   }
 
