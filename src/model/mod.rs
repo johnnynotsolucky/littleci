@@ -14,7 +14,7 @@ use schema::{users, repositories, queue, queue_logs};
 
 use crate::config::AppConfig;
 use crate::queue::{QueueItem, QueueLogItem, ExecutionStatus};
-use crate::HashedPassword;
+use crate::{HashedPassword, HashedValue, kebab_case};
 
 #[derive(Identifiable, Queryable, AsChangeset, Debug, Clone)]
 #[table_name = "users"]
@@ -29,24 +29,8 @@ pub struct UserRecord {
 #[derive(Insertable, Debug)]
 #[table_name = "users"]
 pub struct NewUserRecord {
-    pub id: String,
 	pub username: String,
 	pub password: String,
-}
-
-impl NewUserRecord {
-	pub fn new(username: String, password: String) -> Self {
-		let id = nanoid::custom(24, &crate::ALPHA_NUMERIC);
-		let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
-
-		let password = HashedPassword::new(&password, &salt).into();
-
-		Self {
-			id,
-			username,
-			password,
-		}
-	}
 }
 
 #[derive(Debug)]
@@ -60,17 +44,23 @@ impl Users {
     }
 
     fn establish_connection(&self) -> SqliteConnection {
-        SqliteConnection::establish(&format!("{}/littleci.sqlite3", self.config.data_dir)).unwrap()
+        SqliteConnection::establish(
+				&format!("{}/littleci.sqlite3", self.config.data_dir)
+			)
+			.expect("Unable to establish connection")
     }
 
-	pub fn create(&self, user: NewUserRecord) -> Result<UserRecord, String> {
+	pub fn create(&self, mut user: NewUserRecord) -> Result<UserRecord, String> {
         use schema::users::dsl::*;
         let conn = self.establish_connection();
 
-		let user_id = user.id.clone();
+		let user_id = nanoid::custom(24, &crate::ALPHA_NUMERIC);
+
+		let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
+		user.password = HashedPassword::new(&user.password, &salt).into();
 
         let result = insert_into(users)
-            .values(user)
+            .values((id.eq(&user_id), user))
             .execute(&conn);
 
 		// TODO Don't fail silently here, rather fail in the calling function
@@ -79,7 +69,7 @@ impl Users {
             _ => {
 				match users
 					.filter(id.eq(user_id))
-					.first::<UserRecord>(&self.establish_connection())
+					.first::<UserRecord>(&conn)
 				{
 					Ok(record) => Ok(record),
 					Err(error) => Err(format!("Unable to fetch saved user. {}", error)),
@@ -100,6 +90,107 @@ impl Users {
 			Err(_) => None,
 		}
     }
+}
+
+#[derive(Identifiable, Queryable, AsChangeset, Debug, Clone)]
+#[table_name = "repositories"]
+pub struct RepositoryRecord {
+    pub id: String,
+	pub slug: String,
+	pub name: String,
+	pub run: Option<String>,
+	pub working_dir: Option<String>,
+	pub secret: String,
+
+	/// I'm just going to store JSON in here for now
+	pub variables: Option<String>,
+
+	/// I'm just going to store JSON in here for now
+	pub triggers: Option<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Insertable, Debug)]
+#[table_name = "repositories"]
+pub struct NewRepositoryRecord {
+	pub name: String,
+	pub run: Option<String>,
+	pub working_dir: Option<String>,
+	pub variables: Option<String>,
+	pub triggers: Option<String>,
+}
+
+pub struct Repositories {
+    config: Arc<AppConfig>
+}
+
+impl Repositories {
+    pub fn new(config: Arc<AppConfig>) -> Self {
+        Self { config: config.clone() }
+    }
+
+    fn establish_connection(&self) -> SqliteConnection {
+        SqliteConnection::establish(
+				&format!("{}/littleci.sqlite3", self.config.data_dir)
+			)
+			.expect("Unable to establish connection")
+    }
+
+	pub fn create(&self, mut repository: NewRepositoryRecord) -> Result<RepositoryRecord, String> {
+        use schema::repositories::dsl::*;
+        let conn = self.establish_connection();
+
+		let repository_id = nanoid::custom(24, &crate::ALPHA_NUMERIC);
+		let repository_secret: String = HashedValue::new(&nanoid::generate(32)).into();
+
+        let result = insert_into(repositories)
+            .values((
+				id.eq(&repository_id),
+				slug.eq(&kebab_case(&repository.name)),
+				secret.eq(&repository_secret),
+				repository
+			))
+            .execute(&conn);
+
+        match result {
+            Err(error) => Err(format!("Unable to save new repository. {}", error)),
+            _ => {
+				match repositories
+					.filter(id.eq(repository_id))
+					.first::<RepositoryRecord>(&conn)
+				{
+					Ok(record) => Ok(record),
+					Err(error) => Err(format!("Unable to fetch saved repository. {}", error)),
+				}
+			},
+        }
+	}
+
+	pub fn all(&self, repository_id: &str) -> Vec<RepositoryRecord> {
+        use schema::repositories::dsl::*;
+
+		let records = repositories
+			.load::<RepositoryRecord>(&self.establish_connection());
+
+		match records {
+			Ok(records) => records,
+			Err(_) => vec![],
+		}
+	}
+
+	pub fn find_by_id(&self, repository_id: &str) -> Option<RepositoryRecord> {
+        use schema::repositories::dsl::*;
+
+		let record = repositories
+			.filter(id.eq(repository_id))
+			.first::<RepositoryRecord>(&self.establish_connection());
+
+		match record {
+			Ok(record) => Some(record),
+			Err(_) => None,
+		}
+	}
 }
 
 #[derive(Identifiable, Queryable, AsChangeset, PartialEq, Debug, Clone)]
@@ -225,7 +316,10 @@ impl Queue {
     }
 
     fn establish_connection(&self) -> SqliteConnection {
-        SqliteConnection::establish(&format!("{}/littleci.sqlite3", self.config.data_dir)).unwrap()
+        SqliteConnection::establish(
+				&format!("{}/littleci.sqlite3", self.config.data_dir)
+			)
+			.expect("Unable to establish connection")
     }
 
     pub fn push(&self, item: &QueueItem) {

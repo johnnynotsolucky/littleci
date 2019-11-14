@@ -24,8 +24,13 @@ table! {
 table! {
     repositories (id) {
         id -> Text,
+        slug -> Text,
         name -> Text,
+        run -> Nullable<Text>,
         working_dir -> Nullable<Text>,
+        secret -> Text,
+        variables -> Nullable<Text>,
+        triggers -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
     }

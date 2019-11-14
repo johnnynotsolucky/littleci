@@ -446,9 +446,9 @@ pub fn create_cors_options() -> Cors {
 pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 	let app_state = AppState::from(persisted_config.clone());
 
-	// let tmp_user = crate::model::NewUserRecord::new("admin".into(), "admin".into());
-	// let users = crate::model::Users::new(app_state.config.clone());
-	// users.create(tmp_user);
+	let tmp_user = crate::model::NewUserRecord { username: "admin".into(), password: "admin".into() };
+	let users = crate::model::Users::new(app_state.config.clone());
+	users.create(tmp_user);
 
 	let http_config = Config::build(Environment::Production)
 		// This should never use cookies though?
