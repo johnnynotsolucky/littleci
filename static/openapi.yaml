@@ -309,6 +309,8 @@ components:
     Repository:
       type: object
       properties:
+        id:
+          type: String
         slug:
           type: string
           description: Repository identifier

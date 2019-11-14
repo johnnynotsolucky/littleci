@@ -6,6 +6,10 @@ use serde_derive::{Serialize};
 
 use crate::config::{Repository, Trigger, AppConfig};
 use crate::queue::QueueItem;
+use crate::model::{RepositoryRecord};
+
+#[allow(unused_imports)]
+use log::{debug, info, warn, error};
 
 type Segment = Vec<(String, bool)>;
 
@@ -103,22 +107,53 @@ pub struct Response<T> {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RepositoryResponse {
+	pub id: String,
 	pub slug: String,
 	pub name: String,
-	pub run: String,
+	pub run: Option<String>,
 	pub working_dir: Option<String>,
 	pub variables: HashMap<String, String>,
 	pub triggers: Vec<Trigger>,
 	pub secret: String,
 }
 
+impl From<RepositoryRecord> for RepositoryResponse {
+	fn from(record: RepositoryRecord) -> Self {
+		let variables: HashMap<String, String> = match &record.variables {
+			Some(variables) => serde_json::from_str(&variables).unwrap_or_default(),
+			None => HashMap::default(),
+		};
+
+		let triggers: Vec<Trigger> = match &record.triggers {
+			Some(triggers) => serde_json::from_str(&triggers)
+				.unwrap_or_else(|_| {
+					error!("Unable to parse trigger JSON for repository {}", record.id);
+					Vec::default()
+				}),
+			None => Vec::default(),
+		};
+
+		Self {
+			id: record.id,
+			slug: record.slug,
+			name: record.name,
+			run: record.run,
+			working_dir: record.working_dir,
+			secret: record.secret,
+			variables,
+			triggers,
+		}
+	}
+}
+
 impl RepositoryResponse {
 	pub fn new(slug: &str, repository: &Arc<Repository>) -> Self {
 
 		Self {
+			id: "".into(),
 			slug: slug.to_owned(),
 			name: repository.name.clone(),
-			run: repository.run.clone(),
+			run: Some(repository.run.clone()),
 			working_dir: repository.working_dir.clone(),
 			variables: repository.variables.clone(),
 			triggers: repository.triggers.clone(),

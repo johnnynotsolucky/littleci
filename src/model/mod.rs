@@ -12,7 +12,7 @@ use log::{debug, info, warn, error};
 mod schema;
 use schema::{users, repositories, queue, queue_logs};
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig};
 use crate::queue::{QueueItem, QueueLogItem, ExecutionStatus};
 use crate::{HashedPassword, HashedValue, kebab_case};
 
@@ -121,6 +121,18 @@ pub struct NewRepositoryRecord {
 	pub triggers: Option<String>,
 }
 
+#[derive(AsChangeset, Debug, Clone)]
+#[table_name = "repositories"]
+pub struct RepositorySecret {
+	pub secret: Option<String>,
+}
+
+impl RepositorySecret {
+	pub fn as_none() -> Self {
+		Self { secret: None }
+	}
+}
+
 pub struct Repositories {
     config: Arc<AppConfig>
 }
@@ -137,7 +149,7 @@ impl Repositories {
 			.expect("Unable to establish connection")
     }
 
-	pub fn create(&self, mut repository: NewRepositoryRecord) -> Result<RepositoryRecord, String> {
+	pub fn create(&self, repository: NewRepositoryRecord) -> Result<RepositoryRecord, String> {
         use schema::repositories::dsl::*;
         let conn = self.establish_connection();
 
@@ -167,23 +179,42 @@ impl Repositories {
         }
 	}
 
-	pub fn all(&self, repository_id: &str) -> Vec<RepositoryRecord> {
+	pub fn save(&self, mut repository: RepositoryRecord) -> Result<(), String> {
         use schema::repositories::dsl::*;
 
-		let records = repositories
-			.load::<RepositoryRecord>(&self.establish_connection());
+		repository.slug = kebab_case(&repository.name);
 
-		match records {
-			Ok(records) => records,
-			Err(_) => vec![],
-		}
+        let result = diesel::update(repositories)
+            .set((
+				repository,
+				RepositorySecret::as_none(),
+			))
+            .execute(&self.establish_connection());
+
+        match result {
+            Err(error) => Err(format!("Unable to save repository. {}", error)),
+            _ => {
+				Ok(())
+			},
+        }
 	}
 
-	pub fn find_by_id(&self, repository_id: &str) -> Option<RepositoryRecord> {
+	pub fn all(&self) -> Vec<RepositoryRecord> {
+        use schema::repositories::dsl::*;
+
+		repositories
+			.load::<RepositoryRecord>(&self.establish_connection())
+			.unwrap_or_else(|error| {
+				error!("Error fetching repositories. {}", error);
+				Vec::default()
+			})
+	}
+
+	pub fn find_by_slug(&self, repository_slug: &str) -> Option<RepositoryRecord> {
         use schema::repositories::dsl::*;
 
 		let record = repositories
-			.filter(id.eq(repository_id))
+			.filter(slug.eq(repository_slug))
 			.first::<RepositoryRecord>(&self.establish_connection());
 
 		match record {

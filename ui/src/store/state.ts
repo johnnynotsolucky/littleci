@@ -17,12 +17,13 @@ interface Config {
 }
 
 export interface Repository {
+  id: string,
   slug: string,
   name: string,
   run: string,
   working_dir: string,
   variables: {},
-  triggers: {},
+  triggers: [],
   secret: string,
 }
 

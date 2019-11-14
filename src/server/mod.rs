@@ -18,6 +18,7 @@ use base64::encode;
 use crate::AppState;
 use crate::config::{Trigger, GitTrigger, PersistedConfig, Repository};
 use crate::queue::{QueueItem, ArbitraryData};
+use crate::model::{Repositories};
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
@@ -222,9 +223,11 @@ pub fn repositories(_auth: AuthenticationPayload, state: State<AppState>, routes
 {
 	Ok(
 		Json(
-			state.repositories.iter()
-				.map(|(key, repository)| {
-					let repository = RepositoryResponse::new(key, repository);
+			Repositories::new(state.config.clone())
+				.all()
+				.into_iter()
+				.map(|record| {
+					let repository = RepositoryResponse::from(record);
 					Response {
 						meta: meta_for_repository(&state.config, &routes, &repository),
 						response: repository,
@@ -280,10 +283,10 @@ pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json
 pub fn repository(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>)
 	-> Result<Json<Response<RepositoryResponse>>, String>
 {
-	let repository_name = repository.as_str();
-	match state.repositories.get(repository_name) {
-		Some(repository) => {
-			let repository = RepositoryResponse::new(repository_name, repository);
+	let record = Repositories::new(state.config.clone()).find_by_slug(repository.as_str());
+	match record {
+		Some(record) => {
+			let repository = RepositoryResponse::from(record);
 			Ok(Json(Response {
 				meta: meta_for_repository(&state.config, &routes, &repository),
 				response: repository,
