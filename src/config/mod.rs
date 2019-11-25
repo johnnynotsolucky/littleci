@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::str;
 use serde_derive::{Serialize, Deserialize};
-use failure::{Error, format_err};
+use failure::Error;
 use directories::ProjectDirs;
 use secstr::SecStr;
-
-use crate::{AppState};
 
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct PersistedConfig {
@@ -17,8 +15,6 @@ pub struct PersistedConfig {
 	pub port: u16,
 	pub log_to_syslog: bool,
 	pub authentication_type: AuthenticationType,
-	#[serde(default)]
-	pub repositories: Vec<Repository>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,20 +74,6 @@ pub fn load_app_config() -> Result<PersistedConfig, Error> {
 	let file = read_to_string(app_config_path())?;
 	let persisted_config: PersistedConfig = serde_json::from_str(&file).unwrap();
 	Ok(persisted_config)
-}
-
-pub fn get_secret() -> Result<String, Error> {
-	match load_app_config() {
-		Ok(persisted_config) => {
-			let app_state = AppState::from(persisted_config);
-			let s = app_state.config.secret.unsecure();
-			if let Err(err) = str::from_utf8(s) {
-				eprintln!("{}", err);
-			}
-			Ok(str::from_utf8(s).unwrap().into())
-		},
-		Err(_) => Err(format_err!("No configuration found. Please configure LittleCI first.")),
-	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

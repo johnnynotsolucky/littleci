@@ -27,11 +27,9 @@ use crate::server::start_server;
 use crate::config::{
     app_config_path,
 	load_app_config,
-	get_secret,
     AppConfig,
     PersistedConfig,
     Repository,
-	Trigger,
 	AuthenticationType,
 };
 use crate::queue::{QueueManager, QueueService};
@@ -113,7 +111,6 @@ impl Into<String> for HashedPassword {
 #[derive(Debug, Clone)]
 pub struct AppState {
     config: Arc<AppConfig>,
-    repositories: Arc<HashMap<String, Arc<Repository>>>,
     queue_manager: Arc<QueueManager>,
     queues: Arc<HashMap<String, QueueService>>,
 }
@@ -132,25 +129,11 @@ impl From<PersistedConfig> for AppState {
 			authentication_type: configuration.authentication_type,
         };
 
-        let mut repositories = HashMap::new();
-        for repository in configuration.repositories.iter() {
-			let repository_slug = kebab_case(&repository.name);
-			let repository_secret: String = HashedValue::new(
-					&format!("{}{}", &secret, repository_slug)
-				)
-				.into();
-			let mut repository = repository.clone();
-			repository.secret = Some(SecStr::from(repository_secret));
-
-            repositories.insert(kebab_case(&repository.name), Arc::new(repository.clone()));
-        }
-
-        let queue_manager = QueueManager::new(Arc::new(config.clone()), &repositories);
+        let queue_manager = QueueManager::new(Arc::new(config.clone()));
 
         Self {
             config: Arc::new(config),
             queue_manager: Arc::new(queue_manager),
-            repositories: Arc::new(repositories),
             queues: Arc::new(HashMap::new()),
         }
     }
@@ -183,7 +166,6 @@ fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
         site_url,
         port,
         log_to_syslog,
-        repositories: Vec::new(),
 		authentication_type: AuthenticationType::Simple,
     };
 
@@ -215,63 +197,6 @@ pub fn kebab_case(original: &str) -> String {
     // Generate kebab-cased string
     parts.join("-").to_lowercase()
 }
-
-fn add_repository_config(matches: &ArgMatches) -> Result<String, Error> {
-    let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
-        Some(project_dirs) => project_dirs,
-        None => return Err(format_err!("Invalid $HOME path.")),
-    };
-
-    let mut persisted_config = load_app_config()?;
-
-	let triggers = vec![Trigger::Any];
-
-    let repository = Repository {
-		name: matches.value_of("REPOSITORY_NAME").unwrap().to_owned(),
-        run: matches.value_of("RUN").unwrap().to_owned(),
-        working_dir: match matches.value_of("WORKING_DIR") {
-            Some(working_dir) => Some(working_dir.to_owned()),
-            None => None,
-        },
-		triggers,
-        ..Default::default()
-    };
-
-    persisted_config.repositories.push(repository);
-
-    let json = serde_json::to_string_pretty(&persisted_config)?;
-    let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
-    create_dir_all(&config_dir)?;
-    let file_path = format!("{}/Settings.json", config_dir);
-    fs::write(&file_path, json)?;
-    Ok(format!("Repository config added to {}", file_path))
-}
-
-// fn add_user(username: &str, password: &str) -> Result<String, Error> {
-//     let mut persisted_config = load_app_config()?;
-//     let username = username.to_owned();
-//     let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
-//     let password: String = HashedPassword::new(&password, &salt).into();
-//     persisted_config.users.insert(
-//         username.clone(),
-//         User {
-//             username,
-//             password: password.to_owned()
-//         }
-//     );
-//
-//     // TODO make reusable
-//     let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
-//         Some(project_dirs) => project_dirs,
-//         None => return Err(format_err!("Invalid $HOME path.")),
-//     };
-//     let json = serde_json::to_string_pretty(&persisted_config)?;
-//     let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
-//     create_dir_all(&config_dir)?;
-//     let file_path = format!("{}/Settings.json", config_dir);
-//     fs::write(&file_path, json)?;
-//     Ok("User added".into())
-// }
 
 fn setup_logger(log_to_syslog: bool) -> Result<(), Error> {
     let colors_line = ColoredLevelConfig::new()
@@ -352,24 +277,6 @@ fn main() {
 		(@subcommand config_path =>
 			(about: "Returns the full path to LittleCI config")
 		)
-        (@subcommand repository =>
-            (about: "Configure repositories")
-            (@subcommand set =>
-                (about: "Add a new repository")
-                (@arg REPOSITORY_NAME: +takes_value +required "Name of the repository")
-                (@arg RUN: -r --run +takes_value +required "Command which should be executed. Note: Should include the full path to the executable if it is not in $PATH")
-                (@arg WORKING_DIR: -w --working_dir +takes_value " Working directory for the command to run in.")
-            )
-			(@subcommand set_env =>
-				(about: "Add a variable to be injected into the running job")
-				(@arg REPOSITORY_NAME: +takes_value +required "Name of the variable")
-				(@arg VARIABLE_NAME: +takes_value +required "Name of the variable")
-				(@arg VALUE: +takes_value +required "Value of the variable")
-			)
-        )
-        (@subcommand secret =>
-            (about: "Get the secret for authentication")
-        )
         (@subcommand serve =>
             (about: "Launch LittleCI's HTTP server")
         )
@@ -385,22 +292,6 @@ fn main() {
 	if command_matches.subcommand_matches("config_path").is_some() {
 		println!("{}", app_config_path());
 	}
-
-    if let Some(matches) = command_matches.subcommand_matches("repository") {
-        if let Some(matches) = matches.subcommand_matches("set") {
-            match add_repository_config(matches) {
-                Ok(message) => println!("{}", message),
-                Err(error) => eprintln!("Unable to update repository config. {}", error),
-            }
-        }
-    }
-
-    if command_matches.subcommand_matches("secret").is_some() {
-		match get_secret() {
-			Ok(secret) => println!("{}", secret),
-			Err(error) => eprintln!("Unable to retrieve secret. {}", error),
-		}
-    }
 
     if command_matches.subcommand_matches("serve").is_some() {
         match load_app_config() {

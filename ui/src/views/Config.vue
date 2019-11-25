@@ -13,6 +13,7 @@
       </v-toolbar-items>
     </v-toolbar>
     <v-container
+      v-if="state.config"
       fluid
       class="grey lighten-4 fill-height"
     >

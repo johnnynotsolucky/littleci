@@ -10,11 +10,12 @@ CREATE TABLE repositories (
   id VARCHAR PRIMARY KEY NOT NULL,
   slug VARCHAR NOT NULL,
   name VARCHAR NOT NULL,
-  run VARCHAR,
+  run VARCHAR NOT NULL,
   working_dir VARCHAR,
   secret VARCHAR NOT NULL,
   variables TEXT,
   triggers TEXT,
+  webhooks TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

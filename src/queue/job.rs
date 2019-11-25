@@ -10,7 +10,8 @@ use reqwest::Client;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use crate::config::Repository;
+use crate::model::queues::Queues;
+use crate::model::repositories::Repository;
 use super::{ExecutionStatus, QueueService, QueueItem};
 
 #[derive(Serialize, Debug, Clone)]
@@ -58,18 +59,20 @@ impl JobRunner for CommandRunner {
 			let lock = processing_queue.try_lock();
 
 			if lock.is_ok() {
-				debug!("Queue {} checking for new items to process", queue_name);
+				debug!("Queue {} checking for new jobs", queue_name);
 
 				loop {
-					let item = queue_service.model.next_queued();
+					// TODO filter by actual repository so we don't leak queued items
+					let queue_model = Queues::new(queue_service.config.clone());
+					let item = queue_model.next_queued();
 
 					match item {
 						Some(mut item) => {
 							info!("Starting execution {}", &item.id);
 							item.status = ExecutionStatus::Running;
 
-							if let Err(error) = queue_service.model.update_status(&item) {
-								error!("Unable to update status of item {}. {}", &item.id, error);
+							if let Err(error) = queue_model.update_status(&item) {
+								error!("Unable to update status of job {}. {}", &item.id, error);
 							}
 
 							call_webhooks(&repository, &item);
@@ -128,14 +131,14 @@ impl JobRunner for CommandRunner {
 													match code {
 														code if code != SUCCESS_EXIT_CODE => {
 															item.status = ExecutionStatus::Failed(code);
-															if let Err(error) = queue_service.model.update_status(&item) {
-																error!("Unable to update status of item {}. {}", &item.id, error);
+															if let Err(error) = queue_model.update_status(&item) {
+																error!("Unable to update status of job {}. {}", &item.id, error);
 															}
 															error!("Exection {} failed with code {}", &item.id, code)
 														},
 														_ => {
 															item.status = ExecutionStatus::Completed;
-															if let Err(error) = queue_service.model.update_status(&item) {
+															if let Err(error) = queue_model.update_status(&item) {
 																error!("Unable to update status of item {}. {}", &item.id, error);
 															}
 															info!("Execution {} completed successfully", &item.id)
@@ -144,7 +147,7 @@ impl JobRunner for CommandRunner {
 												},
 												None => {
 													item.status = ExecutionStatus::Cancelled;
-													if let Err(error) = queue_service.model.update_status(&item) {
+													if let Err(error) = queue_model.update_status(&item) {
 														error!("Unable to update status of item {}. {}", &item.id, error);
 													}
 													info!("Exection {} terminated by signal", &item.id)
@@ -153,7 +156,7 @@ impl JobRunner for CommandRunner {
 										},
 										Err(error) => {
 											item.status = ExecutionStatus::Failed(-1);
-											if let Err(error) = queue_service.model.update_status(&item) {
+											if let Err(error) = queue_model.update_status(&item) {
 												error!("Unable to update status of item {}. {}", &item.id, error);
 											}
 											error!("Execution {} failed. Unable to launch script. Error: {}", &item.id, error)
@@ -164,9 +167,6 @@ impl JobRunner for CommandRunner {
 							}
 
 							call_webhooks(&repository, &item);
-
-							// TODO Do we need to sleep?
-							// thread::sleep(time::Duration::from_millis(100));
 						},
 						// We've processed all the items in this queue and can exit
 						None => break,
@@ -175,7 +175,7 @@ impl JobRunner for CommandRunner {
 
 				debug!("Finished processing queue {}. Terminating thread.", queue_name);
 			} else {
-				debug!("Queue {} is aleady processing items", queue_name);
+				debug!("Queue {} is aleady processing jobs", queue_name);
 			}
 		});
 
@@ -183,23 +183,21 @@ impl JobRunner for CommandRunner {
 }
 
 fn call_webhooks(repository: &Repository, item: &QueueItem) {
-	if let Some(webhooks) = &repository.webhooks {
-		let client = Client::new();
-		match to_json_string(&QueueItemData::from(item.clone())) {
-			Ok(json_data) =>
-				for webhook in webhooks.iter() {
-					let res = client
-						.post(webhook)
-						.body(json_data.clone())
-						.send();
+	let client = Client::new();
+	match to_json_string(&QueueItemData::from(item.clone())) {
+		Ok(json_data) =>
+			for webhook in webhooks.iter() {
+				let res = client
+					.post(webhook)
+					.body(json_data.clone())
+					.send();
 
-					match res {
-						Ok(_) => info!("Webhook called: {}", webhook),
-						Err(error) => error!("Webhook failed: {}. {}", webhook, error),
-					}
-				},
-			Err(error) => error!("Unable to serialize job data. {}", error),
-		}
+				match res {
+					Ok(_) => info!("Webhook called: {}", webhook),
+					Err(error) => error!("Webhook failed: {}. {}", webhook, error),
+				}
+			},
+		Err(error) => error!("Unable to serialize job data. {}", error),
 	}
 }
 

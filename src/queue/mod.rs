@@ -7,8 +7,9 @@ use chrono::{NaiveDateTime, Utc};
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use crate::config::{AppConfig, Repository};
-use crate::model::Queue;
+use crate::config::AppConfig;
+use crate::model::queues::Queues;
+use crate::model::repositories::{Repositories, Repository};
 use crate::util::serialize_date;
 
 mod job;
@@ -20,20 +21,25 @@ pub enum ExecutionStatus {
     /// User terminated execution
     #[serde(rename = "cancelled")]
     Cancelled,
+
     #[serde(rename = "queued")]
     /// Queued for execution
     Queued,
+
     #[serde(rename = "running")]
     /// Execution is currently in progress
     Running,
+
     #[serde(rename = "failed")]
     /// Execution failed with an exit code
     Failed(i32),
+
     /// Execution completed successfully
     #[serde(rename = "completed")]
     Completed,
 
     /// Unknown status
+    #[serde(rename = "unknown")]
     Unknown,
 }
 
@@ -108,28 +114,31 @@ pub struct QueueLogItem {
 #[derive(Debug, Clone)]
 pub struct QueueManager {
     pub config: Arc<AppConfig>,
-    pub model: Arc<Queue>,
+    pub model: Arc<Queues>,
     pub queues: HashMap<String, QueueService>,
 }
 
 impl QueueManager {
-    pub fn new(config: Arc<AppConfig>, repositories: &HashMap<String, Arc<Repository>>) -> Self {
-        let model = Arc::new(Queue::new(config.clone()));
+    pub fn new(config: Arc<AppConfig>) -> Self {
         let mut queues = HashMap::new();
-        for (name, repositories) in repositories.iter() {
-            queues.insert(
-                name.to_owned(),
-                QueueService::new(
-                    name.to_owned(),
-                    config.clone(),
-                    repositories.clone(),
-                    model.clone(),
-                )
-            );
-        }
+
+		let repositories_model = Repositories::new(config.clone());
+
+		let repositories = repositories_model.all()
+			.into_iter()
+			.for_each(|r| {
+				queues.insert(
+					r.name.clone(),
+					QueueService::new(
+						r.name.clone(),
+						config.clone(),
+						Arc::new(r.clone()),
+					)
+				);
+			});
 
         Self {
-            model: Arc::new(Queue::new(config.clone())),
+            model: Arc::new(Queues::new(config.clone())),
             config,
             queues,
         }
@@ -166,29 +175,20 @@ pub struct QueueService {
     pub repository: Arc<Repository>,
     pub processing_queue: Arc<Mutex<ProcessingQueue>>,
     pub queue: Arc<RwLock<Vec<QueueItem>>>,
-    pub model: Arc<Queue>,
 	pub runner: Arc<dyn JobRunner>,
 }
 
 impl QueueService {
-    fn new(name: String, config: Arc<AppConfig>, repository: Arc<Repository>, model: Arc<Queue>) -> Self {
+    fn new(name: String, config: Arc<AppConfig>, repository: Arc<Repository>) -> Self {
         Self {
             name: Arc::new(name),
             config,
             repository,
             processing_queue: Arc::new(Mutex::new(ProcessingQueue)),
             queue: Arc::new(RwLock::new(Vec::new())),
-            model,
 			runner: Arc::new(CommandRunner),
         }
     }
-
-    // fn add(&self, item: &QueueItem) {
-    //     self.queue.write().unwrap().push(item.clone());
-    //     debug!("Added item {} to queue {}", &item.id, &self.name);
-    //     debug!("Queue {} size is {}", &self.name, &self.queue.read().unwrap().len());
-    //     self.notify();
-    // }
 
     fn notify(&self) {
 		self.runner.process(self.clone());

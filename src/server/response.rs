@@ -6,7 +6,7 @@ use serde_derive::{Serialize};
 
 use crate::config::{Repository, Trigger, AppConfig};
 use crate::queue::QueueItem;
-use crate::model::{RepositoryRecord};
+use crate::model::repositories::{RepositoryRecord};
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
@@ -110,7 +110,7 @@ pub struct RepositoryResponse {
 	pub id: String,
 	pub slug: String,
 	pub name: String,
-	pub run: Option<String>,
+	pub run: String,
 	pub working_dir: Option<String>,
 	pub variables: HashMap<String, String>,
 	pub triggers: Vec<Trigger>,
@@ -153,7 +153,7 @@ impl RepositoryResponse {
 			id: "".into(),
 			slug: slug.to_owned(),
 			name: repository.name.clone(),
-			run: Some(repository.run.clone()),
+			run: repository.run.clone(),
 			working_dir: repository.working_dir.clone(),
 			variables: repository.variables.clone(),
 			triggers: repository.triggers.clone(),

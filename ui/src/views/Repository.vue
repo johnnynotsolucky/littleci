@@ -4,7 +4,7 @@
       flat
       dark
     >
-      <v-toolbar-title>{{ repository.name }}</v-toolbar-title>
+      <v-toolbar-title>{{ repository && repository.name }}</v-toolbar-title>
     </v-toolbar>
     <v-container
       fluid

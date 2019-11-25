@@ -26,11 +26,12 @@ table! {
         id -> Text,
         slug -> Text,
         name -> Text,
-        run -> Nullable<Text>,
+        run -> Text,
         working_dir -> Nullable<Text>,
         secret -> Text,
         variables -> Nullable<Text>,
         triggers -> Nullable<Text>,
+        webhooks -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
     }

@@ -16,9 +16,9 @@ use secstr::SecStr;
 use base64::encode;
 
 use crate::AppState;
-use crate::config::{Trigger, GitTrigger, PersistedConfig, Repository};
+use crate::config::{Trigger, GitTrigger, PersistedConfig};
 use crate::queue::{QueueItem, ArbitraryData};
-use crate::model::{Repositories};
+use crate::model::repositories::{Repositories, RepositoryRecord};
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
@@ -46,6 +46,7 @@ use static_assets::{ApiDefinitionUi, StaticAssets};
 
 pub struct SecretKey;
 
+// TODO do error handling better
 #[derive(Fail, Debug, Clone)]
 pub enum SecretKeyError {
 	#[fail(display = "Signature was not found")]
@@ -58,10 +59,14 @@ pub enum SecretKeyError {
 	Unknown,
 }
 
-fn secret_key_is_valid(secret: &str, repository: &Repository) -> bool {
-	let secret = Some(SecStr::from(secret));
-	let repository_secret = &repository.secret;
-	&secret == repository_secret
+fn secret_key_is_valid(secret: &str, repository: &RepositoryRecord) -> bool {
+	let secret = SecStr::from(secret);
+	let repository_secret = SecStr::from(repository.secret.clone());
+	println!("{} == {}",
+		std::str::from_utf8(secret.clone().unsecure()).unwrap(),
+		std::str::from_utf8(repository_secret.clone().unsecure()).unwrap(),
+	);
+	secret == repository_secret
 }
 
 const NOTIFY_ROUTE_SLUG_INDEX: usize = 1;
@@ -73,16 +78,25 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 		let repository_slug = request
 			.get_param(NOTIFY_ROUTE_SLUG_INDEX)
 			.and_then(|r: Result<&RawStr, _>| r.ok())
-			.unwrap()
+			.expect("Invalid route")
 			.as_str();
+
+		let state = request.guard::<State<AppState>>().unwrap();
+		let repository = Repositories::new(state.config.clone())
+			.find_by_slug(repository_slug);
+
+		if repository.is_none() {
+			return Outcome::Failure((Status::NotFound, SecretKeyError::Invalid))
+		}
+
+		let repository = repository.unwrap();
 
 		let secret_key = request.headers().get("x-secret-key").next();
 		match secret_key {
 			Some(secret_key) => {
-				let state = request.guard::<State<AppState>>().unwrap();
 				if secret_key_is_valid(
 					&secret_key,
-					&state.repositories.get(repository_slug).unwrap()
+					&repository
 				) {
 					Outcome::Success(SecretKey)
 				} else {
@@ -94,10 +108,9 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 				match secret_key {
 					Some(secret_key) => {
 						let secret_key = secret_key.as_str();
-						let state = request.guard::<State<AppState>>().unwrap();
 						if secret_key_is_valid(
 							&secret_key,
-							&state.repositories.get(repository_slug).unwrap()
+							&repository
 						) {
 							Outcome::Success(SecretKey)
 						} else {
@@ -449,9 +462,9 @@ pub fn create_cors_options() -> Cors {
 pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 	let app_state = AppState::from(persisted_config.clone());
 
-	let tmp_user = crate::model::NewUserRecord { username: "admin".into(), password: "admin".into() };
-	let users = crate::model::Users::new(app_state.config.clone());
-	users.create(tmp_user);
+	// let tmp_user = crate::model::NewUserRecord { username: "admin".into(), password: "admin".into() };
+	// let users = crate::model::Users::new(app_state.config.clone());
+	// users.create(tmp_user);
 
 	let http_config = Config::build(Environment::Production)
 		// This should never use cookies though?

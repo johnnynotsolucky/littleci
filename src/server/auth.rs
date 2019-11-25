@@ -8,7 +8,7 @@ use jsonwebtoken::{encode, decode, Header, Algorithm, Validation};
 
 use crate::{AppState, HashedPassword};
 use crate::config::{AppConfig, AuthenticationType};
-use crate::model::Users;
+use crate::model::users::Users;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPayload {
