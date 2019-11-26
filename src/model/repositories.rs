@@ -1,22 +1,20 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use serde_json;
-use serde::{Serialize, Deserialize};
+use serde::Serialize;
 use diesel::{insert_into, update};
 use diesel::prelude::*;
 use diesel::sqlite::{SqliteConnection};
-use chrono::{NaiveDateTime, Utc};
-use failure::{Error, format_err};
+use chrono::{NaiveDateTime};
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use schema::{users, repositories, queue, queue_logs};
+use schema::repositories;
 
 use crate::config::{AppConfig, Trigger};
-use crate::queue::{QueueItem, QueueLogItem, ExecutionStatus};
 use crate::util::serialize_date;
-use crate::{HashedPassword, HashedValue, kebab_case};
+use crate::{HashedValue, kebab_case};
 
 use super::schema;
 
@@ -179,7 +177,7 @@ impl Repositories {
 
         let result = insert_into(repositories)
             .values((
-				repository,
+				&repository,
 				id.eq(&repository_id),
 				slug.eq(&kebab_case(&repository.name)),
 				secret.eq(&repository_secret),

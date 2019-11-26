@@ -115,45 +115,57 @@ pub struct QueueLogItem {
 pub struct QueueManager {
     pub config: Arc<AppConfig>,
     pub model: Arc<Queues>,
-    pub queues: HashMap<String, QueueService>,
+    pub queues: Arc<RwLock<HashMap<String, QueueService>>>,
 }
 
 impl QueueManager {
     pub fn new(config: Arc<AppConfig>) -> Self {
-        let mut queues = HashMap::new();
-
-		let repositories_model = Repositories::new(config.clone());
-
-		let repositories = repositories_model.all()
-			.into_iter()
-			.for_each(|r| {
-				queues.insert(
-					r.name.clone(),
-					QueueService::new(
-						r.name.clone(),
-						config.clone(),
-						Arc::new(r.clone()),
-					)
-				);
-			});
-
         Self {
             model: Arc::new(Queues::new(config.clone())),
             config,
-            queues,
+            queues: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     pub fn push(&self, repository_name: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
-        match self.queues.get(repository_name) {
-            Some(queue) => {
-                let item = QueueItem::new(repository_name, data);
-                self.model.push(&item);
-                queue.notify();
-                Ok(item)
-            },
-            None => Err(format_err!("Could not find queue with name {}", repository_name)),
-        }
+		let mut service_item: Option<(QueueService, QueueItem)> = match self.queues.read() {
+			Ok(queues) => {
+				match queues.get(repository_name) {
+					Some(queue) => Some((queue.clone(), QueueItem::new(repository_name, data.clone()))),
+					None => None,
+				}
+			},
+			Err(error) => {
+				return Err(format_err!("Error reading from queues. {}", error))
+			},
+		};
+
+		if service_item.is_none() {
+			let repositories_model = Repositories::new(self.config.clone());
+
+			match repositories_model.find_by_slug(&repository_name) {
+				Some(repository) => {
+					let queue = QueueService::new(
+						repository.name.clone(),
+						self.config.clone(),
+						Arc::new(repository),
+					);
+
+					match self.queues.write() {
+						Ok(mut queues) => queues.insert(repository_name.clone().into(), queue.clone()),
+						Err(error) => return Err(format_err!("Error writing to queues. {}", error)),
+					};
+
+					service_item = Some((queue, QueueItem::new(repository_name, data)));
+				},
+				None => return Err(format_err!("Could not find queue with name {}", repository_name)),
+			}
+		}
+
+		let (queue, item) = service_item.expect("Unable to read from queue");
+		self.model.push(&item);
+		queue.notify();
+		Ok(item)
     }
 
     pub fn all(&self, repository: &str) -> Result<Vec<QueueItem>, Error> {
@@ -174,7 +186,6 @@ pub struct QueueService {
     pub config: Arc<AppConfig>,
     pub repository: Arc<Repository>,
     pub processing_queue: Arc<Mutex<ProcessingQueue>>,
-    pub queue: Arc<RwLock<Vec<QueueItem>>>,
 	pub runner: Arc<dyn JobRunner>,
 }
 
@@ -185,7 +196,6 @@ impl QueueService {
             config,
             repository,
             processing_queue: Arc::new(Mutex::new(ProcessingQueue)),
-            queue: Arc::new(RwLock::new(Vec::new())),
 			runner: Arc::new(CommandRunner),
         }
     }

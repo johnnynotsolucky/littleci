@@ -9,11 +9,10 @@ use failure::{Error, format_err};
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use schema::{users, repositories, queue, queue_logs};
+use schema::{queue, queue_logs};
 
 use crate::config::{AppConfig};
 use crate::queue::{QueueItem, QueueLogItem, ExecutionStatus};
-use crate::{HashedPassword, HashedValue, kebab_case};
 
 use super::schema;
 

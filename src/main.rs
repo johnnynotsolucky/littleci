@@ -29,7 +29,6 @@ use crate::config::{
 	load_app_config,
     AppConfig,
     PersistedConfig,
-    Repository,
 	AuthenticationType,
 };
 use crate::queue::{QueueManager, QueueService};

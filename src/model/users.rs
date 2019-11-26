@@ -1,19 +1,16 @@
 use std::sync::Arc;
-use serde_json;
 use diesel::{insert_into, update};
 use diesel::prelude::*;
 use diesel::sqlite::{SqliteConnection};
-use chrono::{NaiveDateTime, Utc};
-use failure::{Error, format_err};
+use chrono::NaiveDateTime;
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use schema::{users, repositories, queue, queue_logs};
+use schema::users;
 
 use crate::config::{AppConfig};
-use crate::queue::{QueueItem, QueueLogItem, ExecutionStatus};
-use crate::{HashedPassword, HashedValue, kebab_case};
+use crate::HashedPassword;
 
 use super::schema;
 

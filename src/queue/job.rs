@@ -186,7 +186,7 @@ fn call_webhooks(repository: &Repository, item: &QueueItem) {
 	let client = Client::new();
 	match to_json_string(&QueueItemData::from(item.clone())) {
 		Ok(json_data) =>
-			for webhook in webhooks.iter() {
+			for webhook in repository.webhooks.iter() {
 				let res = client
 					.post(webhook)
 					.body(json_data.clone())

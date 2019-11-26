@@ -18,7 +18,7 @@ use base64::encode;
 use crate::AppState;
 use crate::config::{Trigger, GitTrigger, PersistedConfig};
 use crate::queue::{QueueItem, ArbitraryData};
-use crate::model::repositories::{Repositories, RepositoryRecord};
+use crate::model::repositories::{Repository, Repositories};
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
@@ -59,7 +59,7 @@ pub enum SecretKeyError {
 	Unknown,
 }
 
-fn secret_key_is_valid(secret: &str, repository: &RepositoryRecord) -> bool {
+fn secret_key_is_valid(secret: &str, repository: &Repository) -> bool {
 	let secret = SecStr::from(secret);
 	let repository_secret = SecStr::from(repository.secret.clone());
 	println!("{} == {}",
@@ -171,12 +171,19 @@ pub fn notify_github(
 	payload: GitHubPayload,
 	state: State<AppState>,
 	routes: State<RouteMap>
-	) -> Result<Json<JobOrSkipped>, String> {
+	) -> Result<Json<JobOrSkipped>, Custom<Json<ErrorResponse>>> {
 
 	let repository_name = repository.as_str();
-	let repository = match state.repositories.get(repository_name) {
+
+	let repository = Repositories::new(state.config.clone()).find_by_slug(repository_name);
+	let repository = match repository {
 		Some(repository) => repository,
-		None => return Err(format!("Repository `{}` does not exist", repository)),
+		None => return Err(
+			Custom(
+				Status::NotFound,
+				Json(ErrorResponse::new(format!("Repository `{}` not found", repository_name).into()))
+			)
+		),
 	};
 
 	let mut should_skip = true;
@@ -225,7 +232,12 @@ pub fn notify_github(
 			routes.inner()
 		) {
 			Ok(response) => Ok(Json(JobOrSkipped::Job(response))),
-			Err(error) => Err(error)
+			Err(error) => Err(
+				Custom(
+					Status::InternalServerError,
+					Json(ErrorResponse::new(format!("Unable to add job to the queue. {}", error).into()))
+				)
+			)
 		}
 	}
 }
@@ -239,8 +251,8 @@ pub fn repositories(_auth: AuthenticationPayload, state: State<AppState>, routes
 			Repositories::new(state.config.clone())
 				.all()
 				.into_iter()
-				.map(|record| {
-					let repository = RepositoryResponse::from(record);
+				.map(|r| {
+					let repository = RepositoryResponse::from(r);
 					Response {
 						meta: meta_for_repository(&state.config, &routes, &repository),
 						response: repository,
@@ -314,15 +326,16 @@ pub fn jobs(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppS
 	-> Result<Json<Vec<Response<QueueItem>>>, String>
 {
 	let repository = repository.as_str();
-	let repository = {
-		match state.repositories.get(repository) {
-			Some(_) => repository,
-			None => return Err(format!("Repository `{}` does not exist", repository)),
-		}
+	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
+	let repository = match record {
+		// We just need the repository slug
+		Some(_) => repository,
+		None => return Err(format!("Repository `{}` does not exist", repository)),
 	};
 
 	match state.queue_manager.all(&repository) {
-		Ok(jobs) => Ok(Json(jobs
+		Ok(jobs) => Ok(
+			Json(jobs
 				.into_iter()
 				.map(|job| {
 					Response {
@@ -330,7 +343,9 @@ pub fn jobs(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppS
 						response: job,
 					}
 				})
-				.collect())),
+				.collect()
+			)
+		),
 		Err(error) => Err(format!("Unable to fetch jobs for repository {}. {}", repository, error)),
 	}
 }
@@ -343,11 +358,11 @@ pub fn log_output(
 	state: State<AppState>
 ) -> Result<String, String> {
 	let repository = repository.as_str();
-	let repository = {
-		match state.repositories.get(repository) {
-			Some(_) => repository,
-			None => return Err(format!("Repository `{}` does not exist", repository)),
-		}
+	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
+	let repository = match record {
+		// We just need the repository slug
+		Some(_) => repository,
+		None => return Err(format!("Repository `{}` does not exist", repository)),
 	};
 
 	let id = id.as_str();
@@ -367,11 +382,11 @@ pub fn log_output(
 #[get("/repositories/<repository>/jobs/<id>")]
 pub fn job(repository: &RawStr, id: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>) -> Result<Json<Response<QueueItem>>, String> {
 	let repository = repository.as_str();
-	let repository = {
-		match state.repositories.get(repository) {
-			Some(_) => repository,
-			None => return Err(format!("Repository `{}` does not exist", repository)),
-		}
+	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
+	let repository = match record {
+		// We just need the repository slug
+		Some(_) => repository,
+		None => return Err(format!("Repository `{}` does not exist", repository)),
 	};
 
 	let id = id.as_str();
