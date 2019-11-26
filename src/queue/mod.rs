@@ -128,6 +128,7 @@ impl QueueManager {
     }
 
     pub fn push(&self, repository_name: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
+		// First see if we the service already exists in the queues map.
 		let mut service_item: Option<(QueueService, QueueItem)> = match self.queues.read() {
 			Ok(queues) => {
 				match queues.get(repository_name) {
@@ -140,6 +141,9 @@ impl QueueManager {
 			},
 		};
 
+		// If it doesn't, create a new service for the repository
+		// XXX This seems a bit tacky, but I couldn't think of another way of doing this without
+		// createing a read lock and blocking a write lock if we needed to create a new service.
 		if service_item.is_none() {
 			let repositories_model = Repositories::new(self.config.clone());
 
@@ -162,16 +166,21 @@ impl QueueManager {
 			}
 		}
 
+		// We shouldn't get to this point without service_item being `Some()`
 		let (queue, item) = service_item.expect("Unable to read from queue");
+		// Add the job to the database and notify the queue service that there's something to
+		// process
 		self.model.push(&item);
 		queue.notify();
 		Ok(item)
     }
 
+	// TODO drop this. Dependencies can just use the model directly
     pub fn all(&self, repository: &str) -> Result<Vec<QueueItem>, Error> {
         self.model.all(repository)
     }
 
+	// TODO drop this. Dependencies can just use the model directly
     pub fn job(&self, repository: &str, id: &str) -> Result<QueueItem, Error> {
         self.model.job(repository, id)
     }
