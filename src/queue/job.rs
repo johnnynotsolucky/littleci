@@ -1,29 +1,29 @@
-use std::fmt::Debug;
-use std::fs::{File, create_dir_all};
-use std::thread;
-use std::process::{Command, Stdio};
-use std::convert::From;
+use reqwest::Client;
 use serde::Serialize;
 use serde_json::to_string as to_json_string;
-use reqwest::Client;
+use std::convert::From;
+use std::fmt::Debug;
+use std::fs::{create_dir_all, File};
+use std::process::{Command, Stdio};
+use std::thread;
 
 #[allow(unused_imports)]
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 
+use super::{ExecutionStatus, QueueItem, QueueService};
 use crate::model::queues::Queues;
 use crate::model::repositories::Repository;
-use super::{ExecutionStatus, QueueService, QueueItem};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct QueueItemData {
-    /// A random system-generated execution identifier.
-    pub id: String,
+	/// A random system-generated execution identifier.
+	pub id: String,
 
-    pub repository: String,
+	pub repository: String,
 
-    /// Current status of the execution
-    #[serde(flatten)]
-    pub status: ExecutionStatus,
+	/// Current status of the execution
+	#[serde(flatten)]
+	pub status: ExecutionStatus,
 }
 
 impl From<QueueItem> for QueueItemData {
@@ -77,7 +77,8 @@ impl JobRunner for CommandRunner {
 
 							call_webhooks(&repository, &item);
 
-							let execution_dir = format!("{}/jobs/{}", &queue_service.config.data_dir, &item.id);
+							let execution_dir =
+								format!("{}/jobs/{}", &queue_service.config.data_dir, &item.id);
 
 							match create_dir_all(&execution_dir) {
 								Ok(_) => {
@@ -167,37 +168,36 @@ impl JobRunner for CommandRunner {
 							}
 
 							call_webhooks(&repository, &item);
-						},
+						}
 						// We've processed all the items in this queue and can exit
 						None => break,
 					}
 				}
 
-				debug!("Finished processing queue {}. Terminating thread.", queue_name);
+				debug!(
+					"Finished processing queue {}. Terminating thread.",
+					queue_name
+				);
 			} else {
 				debug!("Queue {} is aleady processing jobs", queue_name);
 			}
 		});
-
 	}
 }
 
 fn call_webhooks(repository: &Repository, item: &QueueItem) {
 	let client = Client::new();
 	match to_json_string(&QueueItemData::from(item.clone())) {
-		Ok(json_data) =>
+		Ok(json_data) => {
 			for webhook in repository.webhooks.iter() {
-				let res = client
-					.post(webhook)
-					.body(json_data.clone())
-					.send();
+				let res = client.post(webhook).body(json_data.clone()).send();
 
 				match res {
 					Ok(_) => info!("Webhook called: {}", webhook),
 					Err(error) => error!("Webhook failed: {}. {}", webhook, error),
 				}
-			},
+			}
+		}
 		Err(error) => error!("Unable to serialize job data. {}", error),
 	}
 }
-

@@ -1,27 +1,27 @@
+use base64::encode;
+use failure::{format_err, Error, Fail};
+use rocket::config::{Config, Environment};
+use rocket::http::{ContentType, Method, RawStr, Status};
+use rocket::request::{self, FromRequest, Request};
+use rocket::response::status::Custom;
+use rocket::response::{Redirect, Responder};
+use rocket::{catch, catchers, get, post, routes, Outcome, State};
+use rocket_contrib::json::Json;
+use secstr::SecStr;
+use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::fs::read_to_string;
-use std::path::PathBuf;
 use std::io::Cursor;
-use rocket::http::{RawStr, Status, ContentType, Method};
-use rocket::{Outcome, State, get, post, catch, routes, catchers};
-use rocket::config::{Config, Environment};
-use rocket::request::{self, Request, FromRequest};
-use rocket::response::{Responder, Redirect};
-use rocket::response::status::Custom;
-use rocket_contrib::json::Json;
-use failure::{Error, Fail, format_err};
-use serde_derive::{Serialize, Deserialize};
-use secstr::SecStr;
-use base64::encode;
+use std::path::PathBuf;
 
+use crate::config::{GitTrigger, PersistedConfig, Trigger};
+use crate::model::repositories::{Repositories, Repository};
+use crate::queue::{ArbitraryData, QueueItem};
 use crate::AppState;
-use crate::config::{Trigger, GitTrigger, PersistedConfig};
-use crate::queue::{QueueItem, ArbitraryData};
-use crate::model::repositories::{Repository, Repositories};
 
 #[allow(unused_imports)]
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 
 mod auth;
 mod git;
@@ -29,18 +29,12 @@ mod github;
 pub mod response;
 mod static_assets;
 
-use auth::{UserPayload, AuthenticationPayload, authenticate_user};
+use auth::{authenticate_user, AuthenticationPayload, UserPayload};
 use git::GitReference;
-use github::{GitHubPayload};
+use github::GitHubPayload;
 use response::{
-	Routes,
-	RouteMap,
-	Response,
-	ErrorResponse,
-	RepositoryResponse,
-	AppConfigResponse,
-	meta_for_queue_item,
-	meta_for_repository
+	meta_for_queue_item, meta_for_repository, AppConfigResponse, ErrorResponse, RepositoryResponse,
+	Response, RouteMap, Routes,
 };
 use static_assets::{ApiDefinitionUi, StaticAssets};
 
@@ -62,7 +56,8 @@ pub enum SecretKeyError {
 fn secret_key_is_valid(secret: &str, repository: &Repository) -> bool {
 	let secret = SecStr::from(secret);
 	let repository_secret = SecStr::from(repository.secret.clone());
-	println!("{} == {}",
+	println!(
+		"{} == {}",
 		std::str::from_utf8(secret.clone().unsecure()).unwrap(),
 		std::str::from_utf8(repository_secret.clone().unsecure()).unwrap(),
 	);
@@ -82,11 +77,10 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 			.as_str();
 
 		let state = request.guard::<State<AppState>>().unwrap();
-		let repository = Repositories::new(state.config.clone())
-			.find_by_slug(repository_slug);
+		let repository = Repositories::new(state.config.clone()).find_by_slug(repository_slug);
 
 		if repository.is_none() {
-			return Outcome::Failure((Status::NotFound, SecretKeyError::Invalid))
+			return Outcome::Failure((Status::NotFound, SecretKeyError::Invalid));
 		}
 
 		let repository = repository.unwrap();
@@ -94,29 +88,24 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 		let secret_key = request.headers().get("x-secret-key").next();
 		match secret_key {
 			Some(secret_key) => {
-				if secret_key_is_valid(
-					&secret_key,
-					&repository
-				) {
+				if secret_key_is_valid(&secret_key, &repository) {
 					Outcome::Success(SecretKey)
 				} else {
 					Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
 				}
-			},
+			}
 			_ => {
-				let secret_key: Option<&RawStr> = request.get_query_value("key").and_then(|r| r.ok());
+				let secret_key: Option<&RawStr> =
+					request.get_query_value("key").and_then(|r| r.ok());
 				match secret_key {
 					Some(secret_key) => {
 						let secret_key = secret_key.as_str();
-						if secret_key_is_valid(
-							&secret_key,
-							&repository
-						) {
+						if secret_key_is_valid(&secret_key, &repository) {
 							Outcome::Success(SecretKey)
 						} else {
 							Outcome::Failure((Status::BadRequest, SecretKeyError::Invalid))
 						}
-					},
+					}
 					_ => Outcome::Failure((Status::BadRequest, SecretKeyError::Missing)),
 				}
 			}
@@ -124,19 +113,27 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 	}
 }
 
-fn notify_new_job(repository: &str, values: ArbitraryData, state: &AppState, routes: &RouteMap) -> Result<Response<QueueItem>, String> {
+fn notify_new_job(
+	repository: &str,
+	values: ArbitraryData,
+	state: &AppState,
+	routes: &RouteMap,
+) -> Result<Response<QueueItem>, String> {
 	match state.queue_manager.push(repository, values) {
-		Ok(item) => {
-			Ok(Response {
-				meta: meta_for_queue_item(&state.config, &routes, &item),
-				response: item,
-			})
-		},
+		Ok(item) => Ok(Response {
+			meta: meta_for_queue_item(&state.config, &routes, &item),
+			response: item,
+		}),
 		Err(error) => Err(format!("{}", error)),
 	}
 }
 
-fn notify_job(repository: &RawStr, values: ArbitraryData, state: &AppState, routes: &RouteMap) -> Result<Json<Response<QueueItem>>, String> {
+fn notify_job(
+	repository: &RawStr,
+	values: ArbitraryData,
+	state: &AppState,
+	routes: &RouteMap,
+) -> Result<Json<Response<QueueItem>>, String> {
 	match notify_new_job(repository.as_str(), values, state, routes) {
 		Ok(job) => Ok(Json(job)),
 		Err(error) => Err(error),
@@ -144,16 +141,28 @@ fn notify_job(repository: &RawStr, values: ArbitraryData, state: &AppState, rout
 }
 
 #[get("/notify/<repository>")]
-pub fn notify(repository: &RawStr, _secret_key: SecretKey, state: State<AppState>, routes: State<RouteMap>)
-	-> Result<Json<Response<QueueItem>>, String>
-{
-	notify_job(repository, ArbitraryData::new(HashMap::new()), state.inner(), routes.inner())
+pub fn notify(
+	repository: &RawStr,
+	_secret_key: SecretKey,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Response<QueueItem>>, String> {
+	notify_job(
+		repository,
+		ArbitraryData::new(HashMap::new()),
+		state.inner(),
+		routes.inner(),
+	)
 }
 
 #[post("/notify/<repository>", format = "json", data = "<data>")]
-pub fn notify_with_data(repository: &RawStr, data: Json<ArbitraryData>, _secret_key: SecretKey, state: State<AppState>, routes: State<RouteMap>)
-	-> Result<Json<Response<QueueItem>>, String>
-{
+pub fn notify_with_data(
+	repository: &RawStr,
+	data: Json<ArbitraryData>,
+	_secret_key: SecretKey,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Response<QueueItem>>, String> {
 	notify_job(repository, data.into_inner(), state.inner(), routes.inner())
 }
 
@@ -170,20 +179,21 @@ pub fn notify_github(
 	repository: &RawStr,
 	payload: GitHubPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>
-	) -> Result<Json<JobOrSkipped>, Custom<Json<ErrorResponse>>> {
-
+	routes: State<RouteMap>,
+) -> Result<Json<JobOrSkipped>, Custom<Json<ErrorResponse>>> {
 	let repository_name = repository.as_str();
 
 	let repository = Repositories::new(state.config.clone()).find_by_slug(repository_name);
 	let repository = match repository {
 		Some(repository) => repository,
-		None => return Err(
-			Custom(
+		None => {
+			return Err(Custom(
 				Status::NotFound,
-				Json(ErrorResponse::new(format!("Repository `{}` not found", repository_name).into()))
-			)
-		),
+				Json(ErrorResponse::new(
+					format!("Repository `{}` not found", repository_name).into(),
+				)),
+			))
+		}
 	};
 
 	let mut should_skip = true;
@@ -194,84 +204,86 @@ pub fn notify_github(
 				debug!("Matched any trigger for repository {}", repository_name);
 				should_skip = false;
 				break;
-			},
+			}
 			Trigger::Git(GitTrigger::Any) => {
 				debug!("Matched any git trigger for repository {}", repository_name);
 				should_skip = false;
 				break;
-			},
+			}
 			Trigger::Git(GitTrigger::Tag) => {
 				debug!("Trigger tag");
 				if let GitReference::Tag(_) = &payload.reference {
 					debug!("Matched tag trigger for repository {}", repository_name);
 					should_skip = false;
 				}
-			},
+			}
 			Trigger::Git(GitTrigger::Head(refs)) => {
 				for trigger_ref in refs.iter() {
 					if let GitReference::Head(payload_ref) = &payload.reference {
 						if *trigger_ref == *payload_ref {
-							debug!("Matched head trigger {} for repository {}", &trigger_ref, repository_name);
+							debug!(
+								"Matched head trigger {} for repository {}",
+								&trigger_ref, repository_name
+							);
 							should_skip = false;
 						}
 					}
 				}
-			},
+			}
 		}
 	}
 
 	if should_skip {
 		debug!("Skipping job for repository {}", repository_name);
-		Ok(Json(JobOrSkipped::Skipped("Trigger rules not matched. No job queued".into())))
+		Ok(Json(JobOrSkipped::Skipped(
+			"Trigger rules not matched. No job queued".into(),
+		)))
 	} else {
 		debug!("Notifying new job for repository {}", repository_name);
 		match notify_new_job(
 			repository_name,
 			ArbitraryData::from(payload),
 			state.inner(),
-			routes.inner()
+			routes.inner(),
 		) {
 			Ok(response) => Ok(Json(JobOrSkipped::Job(response))),
-			Err(error) => Err(
-				Custom(
-					Status::InternalServerError,
-					Json(ErrorResponse::new(format!("Unable to add job to the queue. {}", error).into()))
-				)
-			)
+			Err(error) => Err(Custom(
+				Status::InternalServerError,
+				Json(ErrorResponse::new(
+					format!("Unable to add job to the queue. {}", error).into(),
+				)),
+			)),
 		}
 	}
 }
 
 #[get("/repositories")]
-pub fn repositories(_auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>)
-	-> Result<Json<Vec<Response<RepositoryResponse>>>, String>
-{
-	Ok(
-		Json(
-			Repositories::new(state.config.clone())
-				.all()
-				.into_iter()
-				.map(|r| {
-					let repository = RepositoryResponse::from(r);
-					Response {
-						meta: meta_for_repository(&state.config, &routes, &repository),
-						response: repository,
-					}
-				})
-				.collect()
-		)
-	)
+pub fn repositories(
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Vec<Response<RepositoryResponse>>>, String> {
+	Ok(Json(
+		Repositories::new(state.config.clone())
+			.all()
+			.into_iter()
+			.map(|r| {
+				let repository = RepositoryResponse::from(r);
+				Response {
+					meta: meta_for_repository(&state.config, &routes, &repository),
+					response: repository,
+				}
+			})
+			.collect(),
+	))
 }
 
 #[get("/config")]
-pub fn get_config(_auth: AuthenticationPayload, state: State<AppState>)
-	-> Result<Json<AppConfigResponse>, String>
-{
-	Ok(
-		Json(
-			AppConfigResponse::from(state.config.clone())
-		)
-	)
+pub fn get_config(
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<Json<AppConfigResponse>, String> {
+	Ok(Json(AppConfigResponse::from(state.config.clone())))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -288,8 +300,10 @@ pub struct LoginResponse {
 }
 
 #[post("/login", format = "json", data = "<data>")]
-pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json<LoginResponse>, Custom<Json<ErrorResponse>>>
-{
+pub fn login(
+	data: Json<UserCredentials>,
+	state: State<AppState>,
+) -> Result<Json<LoginResponse>, Custom<Json<ErrorResponse>>> {
 	let data = data.into_inner();
 	let payload = authenticate_user(state.config.clone(), &data.username, &data.password);
 	match payload {
@@ -299,15 +313,21 @@ pub fn login(data: Json<UserCredentials>, state: State<AppState>) -> Result<Json
 				token: payload.into_token(&state.config),
 			};
 			Ok(Json(response))
-		},
-		Err(_) => Err(Custom(Status::Unauthorized, Json(ErrorResponse::new("Username or password incorrect".into())))),
+		}
+		Err(_) => Err(Custom(
+			Status::Unauthorized,
+			Json(ErrorResponse::new("Username or password incorrect".into())),
+		)),
 	}
 }
 
 #[get("/repositories/<repository>")]
-pub fn repository(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>)
-	-> Result<Json<Response<RepositoryResponse>>, String>
-{
+pub fn repository(
+	repository: &RawStr,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Response<RepositoryResponse>>, String> {
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository.as_str());
 	match record {
 		Some(record) => {
@@ -316,15 +336,18 @@ pub fn repository(repository: &RawStr, _auth: AuthenticationPayload, state: Stat
 				meta: meta_for_repository(&state.config, &routes, &repository),
 				response: repository,
 			}))
-		},
+		}
 		None => Err(format!("Repository `{}` does not exist", repository)),
 	}
 }
 
 #[get("/repositories/<repository>/jobs")]
-pub fn jobs(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>)
-	-> Result<Json<Vec<Response<QueueItem>>>, String>
-{
+pub fn jobs(
+	repository: &RawStr,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Vec<Response<QueueItem>>>, String> {
 	let repository = repository.as_str();
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
 	let repository = match record {
@@ -334,19 +357,18 @@ pub fn jobs(repository: &RawStr, _auth: AuthenticationPayload, state: State<AppS
 	};
 
 	match state.queue_manager.all(&repository) {
-		Ok(jobs) => Ok(
-			Json(jobs
-				.into_iter()
-				.map(|job| {
-					Response {
-						meta: meta_for_queue_item(&state.config, &routes, &job),
-						response: job,
-					}
+		Ok(jobs) => Ok(Json(
+			jobs.into_iter()
+				.map(|job| Response {
+					meta: meta_for_queue_item(&state.config, &routes, &job),
+					response: job,
 				})
-				.collect()
-			)
-		),
-		Err(error) => Err(format!("Unable to fetch jobs for repository {}. {}", repository, error)),
+				.collect(),
+		)),
+		Err(error) => Err(format!(
+			"Unable to fetch jobs for repository {}. {}",
+			repository, error
+		)),
 	}
 }
 
@@ -355,7 +377,7 @@ pub fn log_output(
 	repository: &RawStr,
 	id: &RawStr,
 	_auth: AuthenticationPayload,
-	state: State<AppState>
+	state: State<AppState>,
 ) -> Result<String, String> {
 	let repository = repository.as_str();
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
@@ -369,18 +391,33 @@ pub fn log_output(
 
 	match state.queue_manager.job(&repository, &id) {
 		Ok(job) => {
-			let log_output = read_to_string(format!("{}/jobs/{}/output.log", &state.config.data_dir, &job.id));
+			let log_output = read_to_string(format!(
+				"{}/jobs/{}/output.log",
+				&state.config.data_dir, &job.id
+			));
 			match log_output {
 				Ok(log_output) => Ok(log_output),
-				Err(error) => Err(format!("Unable to read output file for job {}. {}", &id, error)),
+				Err(error) => Err(format!(
+					"Unable to read output file for job {}. {}",
+					&id, error
+				)),
 			}
-		},
-		Err(error) => Err(format!("Unable to fetch jobs for repository {}. {}", repository, error)),
+		}
+		Err(error) => Err(format!(
+			"Unable to fetch jobs for repository {}. {}",
+			repository, error
+		)),
 	}
 }
 
 #[get("/repositories/<repository>/jobs/<id>")]
-pub fn job(repository: &RawStr, id: &RawStr, _auth: AuthenticationPayload, state: State<AppState>, routes: State<RouteMap>) -> Result<Json<Response<QueueItem>>, String> {
+pub fn job(
+	repository: &RawStr,
+	id: &RawStr,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Response<QueueItem>>, String> {
 	let repository = repository.as_str();
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
 	let repository = match record {
@@ -392,13 +429,14 @@ pub fn job(repository: &RawStr, id: &RawStr, _auth: AuthenticationPayload, state
 	let id = id.as_str();
 
 	match state.queue_manager.job(&repository, &id) {
-		Ok(job) => {
-			Ok(Json(Response {
-				meta: meta_for_queue_item(&state.config, &routes, &job),
-				response: job,
-			}))
-		},
-		Err(error) => Err(format!("Unable to fetch jobs for repository {}. {}", repository, error)),
+		Ok(job) => Ok(Json(Response {
+			meta: meta_for_queue_item(&state.config, &routes, &job),
+			response: job,
+		})),
+		Err(error) => Err(format!(
+			"Unable to fetch jobs for repository {}. {}",
+			repository, error
+		)),
 	}
 }
 
@@ -406,13 +444,15 @@ pub fn job(repository: &RawStr, id: &RawStr, _auth: AuthenticationPayload, state
 pub struct StaticAsset(PathBuf, Option<String>);
 
 impl Responder<'static> for StaticAsset {
-    fn respond_to(self, _req: &Request) -> Result<rocket::response::Response<'static>, Status> {
+	fn respond_to(self, _req: &Request) -> Result<rocket::response::Response<'static>, Status> {
 		if let Some(content) = self.1 {
 			let mut response = rocket::response::Response::build();
 			response.sized_body(Cursor::new(content));
 
 			if let Some(extension) = self.0.extension() {
-				if let Some(content_type) = ContentType::from_extension(&extension.to_string_lossy()) {
+				if let Some(content_type) =
+					ContentType::from_extension(&extension.to_string_lossy())
+				{
 					response.header(content_type);
 				}
 			}
@@ -422,13 +462,16 @@ impl Responder<'static> for StaticAsset {
 			// TODO Handle properly
 			Err(Status::NotFound)
 		}
-    }
+	}
 }
 
 #[get("/static/<file..>")]
 pub fn get_static_asset(file: PathBuf) -> StaticAsset {
 	if let Some(asset) = StaticAssets::get(file.to_str().unwrap()) {
-		StaticAsset(file, Some(std::str::from_utf8(asset.as_ref()).unwrap().into()))
+		StaticAsset(
+			file,
+			Some(std::str::from_utf8(asset.as_ref()).unwrap().into()),
+		)
 	} else {
 		StaticAsset(file, None)
 	}
@@ -437,7 +480,10 @@ pub fn get_static_asset(file: PathBuf) -> StaticAsset {
 #[get("/swagger/<file..>")]
 pub fn get_swagger_asset(file: PathBuf) -> StaticAsset {
 	if let Some(asset) = ApiDefinitionUi::get(file.to_str().unwrap()) {
-		StaticAsset(file, Some(std::str::from_utf8(asset.as_ref()).unwrap().into()))
+		StaticAsset(
+			file,
+			Some(std::str::from_utf8(asset.as_ref()).unwrap().into()),
+		)
 	} else {
 		StaticAsset(file, None)
 	}
@@ -454,18 +500,19 @@ pub fn not_found_handler() -> Json<ErrorResponse> {
 }
 
 use rocket_cors::{
-    AllowedHeaders, AllowedOrigins, // 2.
-    Cors, CorsOptions // 3.
+	AllowedHeaders,
+	AllowedOrigins, // 2.
+	Cors,
+	CorsOptions, // 3.
 };
 
 pub fn create_cors_options() -> Cors {
-
 	CorsOptions {
 		allowed_origins: AllowedOrigins::all(),
 		allowed_methods: vec![Method::Get, Method::Post]
-		   .into_iter()
-		   .map(From::from)
-		   .collect(),
+			.into_iter()
+			.map(From::from)
+			.collect(),
 		allowed_headers: AllowedHeaders::all(),
 		allow_credentials: true,
 		..Default::default()
@@ -523,10 +570,9 @@ pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 				.mount("/", routes);
 
 			server.launch();
-		},
+		}
 		Err(error) => return Err(format_err!("Invalid HTTP configuration: {}", error)),
 	};
 
 	Ok(())
 }
-

@@ -1,10 +1,10 @@
+use directories::ProjectDirs;
+use failure::Error;
+use secstr::SecStr;
+use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::str;
-use serde_derive::{Serialize, Deserialize};
-use failure::Error;
-use directories::ProjectDirs;
-use secstr::SecStr;
 
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct PersistedConfig {
@@ -46,9 +46,9 @@ pub struct Repository {
 pub enum GitTrigger {
 	#[serde(rename = "any")]
 	Any,
-    #[serde(rename = "head")]
+	#[serde(rename = "head")]
 	Head(Vec<String>),
-    #[serde(rename = "tag")]
+	#[serde(rename = "tag")]
 	Tag,
 }
 
@@ -61,12 +61,17 @@ pub enum Trigger {
 }
 
 impl Default for Trigger {
-    fn default() -> Self { Self::Git(GitTrigger::Head(vec!["master".into()])) }
+	fn default() -> Self {
+		Self::Git(GitTrigger::Head(vec!["master".into()]))
+	}
 }
 
 pub fn app_config_path() -> String {
 	let project_dirs = ProjectDirs::from("org", "littleci", "LittleCI").unwrap();
-	let file_path = format!("{}/Settings.json", project_dirs.config_dir().to_str().unwrap());
+	let file_path = format!(
+		"{}/Settings.json",
+		project_dirs.config_dir().to_str().unwrap()
+	);
 	file_path
 }
 
@@ -83,5 +88,7 @@ pub enum AuthenticationType {
 }
 
 impl Default for AuthenticationType {
-	fn default() -> Self { Self::Simple }
+	fn default() -> Self {
+		Self::Simple
+	}
 }

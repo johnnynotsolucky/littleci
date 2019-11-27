@@ -1,14 +1,14 @@
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
-use rocket::{State, Outcome};
-use rocket::request::{self, Request, FromRequest};
+use jsonwebtoken::{decode, encode, Algorithm, Header, Validation};
 use rocket::http::Status;
-use serde_derive::{Serialize, Deserialize};
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation};
+use rocket::request::{self, FromRequest, Request};
+use rocket::{Outcome, State};
+use serde_derive::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::{AppState, HashedPassword};
 use crate::config::{AppConfig, AuthenticationType};
 use crate::model::users::Users;
+use crate::{AppState, HashedPassword};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPayload {
@@ -25,20 +25,26 @@ impl<'a, 'r> FromRequest<'a, 'r> for AuthenticationPayload {
 		// check if auth type is simple
 		let state = request.guard::<State<AppState>>().unwrap();
 		match state.config.authentication_type {
-			AuthenticationType::NoAuthentication => {
-				Outcome::Success(AuthenticationPayload(None))
-			},
+			AuthenticationType::NoAuthentication => Outcome::Success(AuthenticationPayload(None)),
 			AuthenticationType::Simple => {
 				if let Some(authorization) = request.headers().get_one("authorization") {
 					let parts: Vec<_> = authorization.split(" ").collect();
 					if parts.len() == 2 {
 						if parts[0] == "Bearer" {
 							// TODO Fetch config secret
-							let token_data = decode::<UserPayload>(&parts[1], &state.config.secret.unsecure(), &Validation::new(Algorithm::HS256));
+							let token_data = decode::<UserPayload>(
+								&parts[1],
+								&state.config.secret.unsecure(),
+								&Validation::new(Algorithm::HS256),
+							);
 							return match token_data {
-								Ok(token_data) => Outcome::Success(AuthenticationPayload(Some(token_data.claims))),
-								Err(error) => Outcome::Failure((Status::Unauthorized, format!("{}", error)))
-							}
+								Ok(token_data) => {
+									Outcome::Success(AuthenticationPayload(Some(token_data.claims)))
+								}
+								Err(error) => {
+									Outcome::Failure((Status::Unauthorized, format!("{}", error)))
+								}
+							};
 						}
 					}
 				}
@@ -46,7 +52,6 @@ impl<'a, 'r> FromRequest<'a, 'r> for AuthenticationPayload {
 				Outcome::Failure((Status::Unauthorized, "Not Authorized".into()))
 			}
 		}
-
 	}
 }
 
@@ -75,13 +80,10 @@ impl UserPayload {
 pub fn authenticate_user(
 	config: Arc<AppConfig>,
 	username: &str,
-	password: &str
-) -> Result<UserPayload, String>
-{
+	password: &str,
+) -> Result<UserPayload, String> {
 	match config.authentication_type {
-		AuthenticationType::NoAuthentication => {
-			Err("User authentication disabled".into())
-		},
+		AuthenticationType::NoAuthentication => Err("User authentication disabled".into()),
 		AuthenticationType::Simple => {
 			let users = Users::new(config);
 			let user_record = users.find_by_username(username);
@@ -93,9 +95,9 @@ pub fn authenticate_user(
 					} else {
 						Err("Passwords do not match".into())
 					}
-				},
+				}
 				None => Err("User not found".into()),
 			}
-		},
+		}
 	}
 }

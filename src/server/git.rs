@@ -1,6 +1,6 @@
-use serde::{self, Deserialize, Deserializer};
-use serde::de::Error;
 use regex::Regex;
+use serde::de::Error;
+use serde::{self, Deserialize, Deserializer};
 
 #[derive(Debug, Clone)]
 pub enum GitReference {
@@ -28,7 +28,7 @@ impl<'de> Deserialize<'de> for GitReference {
 			if let Some(captures) = tags_regex.captures(&full_ref) {
 				match captures.get(1) {
 					Some(capture) => Some(GitReference::Tag(capture.as_str().to_owned())),
-					None => None
+					None => None,
 				}
 			} else {
 				None

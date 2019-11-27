@@ -1,13 +1,12 @@
-use serde::Serializer;
 use chrono::NaiveDateTime;
+use serde::Serializer;
 
 const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 pub fn serialize_date<S>(dt: &NaiveDateTime, s: S) -> Result<S::Ok, S::Error>
 where
-    S: Serializer,
+	S: Serializer,
 {
-    let formatted = format!("{}", dt.format(DATETIME_FORMAT));
-    s.serialize_str(&formatted)
+	let formatted = format!("{}", dt.format(DATETIME_FORMAT));
+	s.serialize_str(&formatted)
 }
-

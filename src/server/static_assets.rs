@@ -7,4 +7,3 @@ pub struct ApiDefinitionUi;
 #[derive(RustEmbed)]
 #[folder = "static/"]
 pub struct StaticAssets;
-
