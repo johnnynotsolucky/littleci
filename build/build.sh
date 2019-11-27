@@ -4,6 +4,9 @@ set -e
 # TODO build the correct branch when necessary
 git pull
 
+rustup component add rustfmt
+cargo +nightly fmt --all -- --check
+
 (cd swagger/ && npm ci && npm run build)
 
 ./build/docker/build-images.sh
