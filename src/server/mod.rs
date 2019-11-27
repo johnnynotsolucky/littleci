@@ -17,6 +17,7 @@ use std::path::PathBuf;
 
 use crate::config::{GitTrigger, PersistedConfig, Trigger};
 use crate::model::repositories::{Repositories, Repository};
+use crate::model::queues::{Queues};
 use crate::queue::{ArbitraryData, QueueItem};
 use crate::AppState;
 
@@ -121,7 +122,7 @@ fn notify_new_job(
 ) -> Result<Response<QueueItem>, String> {
 	match state.queue_manager.push(repository, values) {
 		Ok(item) => Ok(Response {
-			meta: meta_for_queue_item(&state.config, &routes, &item),
+			meta: meta_for_queue_item(state.config.clone(), &routes, &item),
 			response: item,
 		}),
 		Err(error) => Err(format!("{}", error)),
@@ -341,6 +342,34 @@ pub fn repository(
 	}
 }
 
+#[post("/repositories", format = "json", data = "<data>")]
+pub fn add_repository(
+	data: Json<Repository>,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Response<RepositoryResponse>>, Custom<Json<ErrorResponse>>> {
+	let data = data.into_inner();
+	let record = Repositories::new(state.config.clone()).create(data);
+	match record {
+		Ok(record) => {
+			let repository = RepositoryResponse::from(record);
+			Ok(Json(Response {
+				meta: meta_for_repository(&state.config, &routes, &repository),
+				response: repository,
+			}))
+		}
+		Err(error) => {
+			Err(Custom(
+				Status::BadRequest,
+				Json(ErrorResponse::new(
+					format!("Could not create new repository. {}", error).into(),
+				)),
+			))
+		}
+	}
+}
+
 #[get("/repositories/<repository>/jobs")]
 pub fn jobs(
 	repository: &RawStr,
@@ -356,11 +385,12 @@ pub fn jobs(
 		None => return Err(format!("Repository `{}` does not exist", repository)),
 	};
 
-	match state.queue_manager.all(&repository) {
+	let queues_model = Queues::new(state.config.clone());
+	match queues_model.all(&repository) {
 		Ok(jobs) => Ok(Json(
 			jobs.into_iter()
 				.map(|job| Response {
-					meta: meta_for_queue_item(&state.config, &routes, &job),
+					meta: meta_for_queue_item(state.config.clone(), &routes, &job),
 					response: job,
 				})
 				.collect(),
@@ -389,7 +419,8 @@ pub fn log_output(
 
 	let id = id.as_str();
 
-	match state.queue_manager.job(&repository, &id) {
+	let queues_model = Queues::new(state.config.clone());
+	match queues_model.job(&repository, &id) {
 		Ok(job) => {
 			let log_output = read_to_string(format!(
 				"{}/jobs/{}/output.log",
@@ -428,9 +459,10 @@ pub fn job(
 
 	let id = id.as_str();
 
-	match state.queue_manager.job(&repository, &id) {
+	let queues_model = Queues::new(state.config.clone());
+	match queues_model.job(&repository, &id) {
 		Ok(job) => Ok(Json(Response {
-			meta: meta_for_queue_item(&state.config, &routes, &job),
+			meta: meta_for_queue_item(state.config.clone(), &routes, &job),
 			response: job,
 		})),
 		Err(error) => Err(format!(
@@ -524,8 +556,8 @@ pub fn create_cors_options() -> Cors {
 pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 	let app_state = AppState::from(persisted_config.clone());
 
-	// let tmp_user = crate::model::NewUserRecord { username: "admin".into(), password: "admin".into() };
-	// let users = crate::model::Users::new(app_state.config.clone());
+	// let tmp_user = crate::model::users::NewUserRecord { username: "admin".into(), password: "admin".into() };
+	// let users = crate::model::users::Users::new(app_state.config.clone());
 	// users.create(tmp_user);
 
 	let http_config = Config::build(Environment::Production)
@@ -541,18 +573,18 @@ pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 		Ok(config) => {
 			let routes = routes![
 				get_config,
-				// notify_with_secret,
 				notify,
-				// notify_with_secret_with_data,
 				notify_with_data,
 				notify_github,
 				repositories,
 				repository,
+				add_repository,
 				jobs,
 				job,
 				log_output,
 				login,
 				get_static_asset,
+				// TODO ??? remove swagger UI
 				get_swagger_asset,
 				swagger,
 			];

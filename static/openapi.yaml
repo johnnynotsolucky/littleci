@@ -131,6 +131,27 @@ paths:
       security:
         - user_auth: []
   /repositories:
+    post:
+      tags:
+        - repositories
+      summary: Add a new repository
+      operationId: addRepository
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Repository'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+      security:
+        - user_auth: []
     get:
       tags:
         - repositories
@@ -282,9 +303,9 @@ components:
         id:
           type: string
           description: Job ID
-        repository:
+        repository_id:
           type: string
-          description: Name of the repository associated with this job
+          description: ID of the repository associated with this job
         status:
           $ref: '#/components/schemas/ExecutionStatus'
         exit_code:
@@ -311,9 +332,10 @@ components:
       properties:
         id:
           type: String
+          description: Identifier
         slug:
           type: string
-          description: Repository identifier
+          description: URL friendly slug
         name:
           type: string
           description: Repository name
@@ -326,6 +348,8 @@ components:
         variables:
           type: object
         triggers:
+          type: object
+        webhooks:
           type: object
         secret:
           type: string

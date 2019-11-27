@@ -20,7 +20,6 @@ use super::schema;
 #[table_name = "queue"]
 struct QueueRecord {
 	id: String,
-	repository: String,
 	status: String,
 	exit_code: Option<i32>,
 	data: String,
@@ -71,7 +70,7 @@ impl From<(QueueRecord, Vec<QueueLogRecord>)> for QueueItem {
 		let (record, logs) = record;
 		QueueItem {
 			id: record.id,
-			repository: record.repository,
+			repository_id: record.repository_id,
 			status: ExecutionStatus::from((&*record.status, &record.exit_code)),
 			data: serde_json::from_str(&record.data).unwrap(),
 			created_at: record.created_at,
@@ -94,12 +93,12 @@ impl From<QueueLogRecord> for QueueLogItem {
 #[table_name = "queue"]
 struct NewQueueRecord {
 	id: String,
-	repository: String,
 	status: String,
 	exit_code: Option<i32>,
 	data: String,
 	created_at: NaiveDateTime,
 	updated_at: NaiveDateTime,
+	repository_id: String,
 }
 
 impl From<&QueueItem> for NewQueueRecord {
@@ -108,12 +107,12 @@ impl From<&QueueItem> for NewQueueRecord {
 
 		Self {
 			id: item.id.clone(),
-			repository: item.repository.clone(),
 			status,
 			exit_code,
 			data: serde_json::to_string(&item.data).unwrap(),
 			created_at: item.created_at,
 			updated_at: item.updated_at,
+			repository_id: item.repository_id.clone(),
 		}
 	}
 }
@@ -163,11 +162,12 @@ impl Queues {
 		};
 	}
 
-	pub fn next_queued(&self) -> Option<QueueItem> {
+	pub fn next_queued(&self, repository_id: &str) -> Option<QueueItem> {
 		use schema::queue::dsl::*;
 
 		let (queued_status, _) = ExecutionStatus::Queued.into();
 		let record = queue
+			.filter(id.eq(repository_id))
 			.filter(status.eq(queued_status))
 			.order(created_at.desc())
 			.first::<QueueRecord>(&self.establish_connection());
@@ -232,11 +232,11 @@ impl Queues {
 		}
 	}
 
-	pub fn all(&self, repository_name: &str) -> Result<Vec<QueueItem>, Error> {
+	pub fn all(&self, repository: &str) -> Result<Vec<QueueItem>, Error> {
 		use schema::queue::dsl::*;
 
 		let records = queue
-			.filter(repository.eq(repository_name))
+			.filter(repository_id.eq(repository))
 			.order(created_at.desc())
 			.load::<QueueRecord>(&self.establish_connection());
 
@@ -246,24 +246,24 @@ impl Queues {
 				.map(|record| QueueItem::from((record, Vec::new())))
 				.collect()),
 			Err(error) => {
-				error!("Unable to fetch jobs for {}. {}", repository_name, error);
+				error!("Unable to fetch jobs for {}. {}", repository, error);
 				Err(format_err!(
 					"Unable to fetch jobs for {}. {}",
-					repository_name,
+					repository,
 					error
 				))
 			}
 		}
 	}
 
-	pub fn job(&self, repository_name: &str, job_id: &str) -> Result<QueueItem, Error> {
+	pub fn job(&self, repository: &str, job_id: &str) -> Result<QueueItem, Error> {
 		use schema::queue::dsl::*;
 
 		let conn = &self.establish_connection();
 
 		let record = queue
 			.filter(id.eq(job_id))
-			.filter(repository.eq(repository_name))
+			.filter(repository_id.eq(repository))
 			.order(created_at.desc())
 			.first::<QueueRecord>(conn);
 
@@ -283,12 +283,12 @@ impl Queues {
 			Err(error) => {
 				error!(
 					"Unable to fetch job {} for {}. {}",
-					job_id, repository_name, error
+					job_id, repository, error
 				);
 				Err(format_err!(
 					"Unable to fetch job {} for {}. {}",
 					job_id,
-					repository_name,
+					repository,
 					error
 				))
 			}

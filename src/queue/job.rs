@@ -19,6 +19,7 @@ pub struct QueueItemData {
 	/// A random system-generated execution identifier.
 	pub id: String,
 
+	/// Repository identifier
 	pub repository: String,
 
 	/// Current status of the execution
@@ -30,7 +31,7 @@ impl From<QueueItem> for QueueItemData {
 	fn from(queue_item: QueueItem) -> Self {
 		Self {
 			id: queue_item.id,
-			repository: queue_item.repository,
+			repository: queue_item.repository_id,
 			status: queue_item.status.clone(),
 		}
 	}
@@ -58,13 +59,12 @@ impl JobRunner for CommandRunner {
 			// assume that there is already a thread processing the queue.
 			let lock = processing_queue.try_lock();
 
-			if lock.is_ok() {
+			if lock.is_some() {
 				debug!("Queue {} checking for new jobs", queue_name);
 
 				loop {
-					// TODO filter by actual repository so we don't leak queued items
 					let queue_model = Queues::new(queue_service.config.clone());
-					let item = queue_model.next_queued();
+					let item = queue_model.next_queued(&repository.id);
 
 					match item {
 						Some(mut item) => {

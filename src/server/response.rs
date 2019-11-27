@@ -5,7 +5,7 @@ use std::str;
 use std::sync::Arc;
 
 use crate::config::{AppConfig, Trigger};
-use crate::model::repositories::Repository;
+use crate::model::repositories::{Repositories, Repository};
 use crate::queue::QueueItem;
 
 #[allow(unused_imports)]
@@ -205,15 +205,19 @@ pub fn meta_for_repository(
 }
 
 pub fn meta_for_queue_item(
-	app_config: &AppConfig,
+	app_config: Arc<AppConfig>,
 	routes: &RouteMap,
 	queue_item: &QueueItem,
 ) -> ResponseMeta {
+	let repository = Repositories::new(app_config.clone())
+		.find_by_id(&queue_item.repository_id)
+		.expect("Couldn't fetch repository");
+
 	let identity_url = format!(
 		"{}{}",
 		&app_config.site_url,
 		routes.get("job").unwrap().url(vec![
-			("repository", &queue_item.repository),
+			("repository", &repository.slug),
 			("id", &queue_item.id),
 		])
 	);
@@ -223,7 +227,7 @@ pub fn meta_for_queue_item(
 		"{}{}",
 		&app_config.site_url,
 		log_output.clone().url(vec![
-			("repository", &queue_item.repository),
+			("repository", &repository.slug),
 			("id", &queue_item.id),
 			("log", "stdout"),
 		])
@@ -233,7 +237,7 @@ pub fn meta_for_queue_item(
 		"{}{}",
 		&app_config.site_url,
 		log_output.clone().url(vec![
-			("repository", &queue_item.repository),
+			("repository", &repository.slug),
 			("id", &queue_item.id),
 			("log", "stderr"),
 		])

@@ -2,7 +2,8 @@ use chrono::{NaiveDateTime, Utc};
 use failure::{format_err, Error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
+use parking_lot::{Mutex, RwLock};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -68,7 +69,7 @@ pub struct QueueItem {
 	/// A random system-generated execution identifier.
 	pub id: String,
 
-	pub repository: String,
+	pub repository_id: String,
 
 	/// Current status of the execution
 	#[serde(flatten)]
@@ -90,10 +91,10 @@ pub struct QueueItem {
 }
 
 impl QueueItem {
-	fn new(repository: &str, data: ArbitraryData) -> Self {
+	fn new(repository_id: &str, data: ArbitraryData) -> Self {
 		Self {
 			id: nanoid::custom(24, &crate::ALPHA_NUMERIC),
-			repository: repository.to_owned(),
+			repository_id: repository_id.to_owned(),
 			status: ExecutionStatus::Queued,
 			data,
 			created_at: Utc::now().naive_utc(),
@@ -129,14 +130,14 @@ impl QueueManager {
 	}
 
 	pub fn push(&self, repository_name: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
+		let mut service_item: Option<(QueueService, QueueItem)> = None;
 		// First see if we the service already exists in the queues map.
-		let mut service_item: Option<(QueueService, QueueItem)> = match self.queues.read() {
-			Ok(queues) => match queues.get(repository_name) {
-				Some(queue) => Some((queue.clone(), QueueItem::new(repository_name, data.clone()))),
-				None => None,
-			},
-			Err(error) => return Err(format_err!("Error reading from queues. {}", error)),
-		};
+		{
+			let queues = self.queues.read();
+			if let Some(queue) = queues.get(repository_name) {
+				service_item = Some((queue.clone(), QueueItem::new(repository_name, data.clone())));
+			}
+		}
 
 		// If it doesn't, create a new service for the repository
 		// XXX This seems a bit tacky, but I couldn't think of another way of doing this without
@@ -152,14 +153,8 @@ impl QueueManager {
 						Arc::new(repository),
 					);
 
-					match self.queues.write() {
-						Ok(mut queues) => {
-							queues.insert(repository_name.clone().into(), queue.clone())
-						}
-						Err(error) => {
-							return Err(format_err!("Error writing to queues. {}", error))
-						}
-					};
+					let mut queues = self.queues.write();
+					queues.insert(repository_name.clone().into(), queue.clone());
 
 					service_item = Some((queue, QueueItem::new(repository_name, data)));
 				}
@@ -179,16 +174,6 @@ impl QueueManager {
 		self.model.push(&item);
 		queue.notify();
 		Ok(item)
-	}
-
-	// TODO drop this. Dependencies can just use the model directly
-	pub fn all(&self, repository: &str) -> Result<Vec<QueueItem>, Error> {
-		self.model.all(repository)
-	}
-
-	// TODO drop this. Dependencies can just use the model directly
-	pub fn job(&self, repository: &str, id: &str) -> Result<QueueItem, Error> {
-		self.model.job(repository, id)
 	}
 }
 

@@ -25,13 +25,14 @@ impl<'a, 'r> FromRequest<'a, 'r> for AuthenticationPayload {
 		// check if auth type is simple
 		let state = request.guard::<State<AppState>>().unwrap();
 		match state.config.authentication_type {
+			// Just pass through
 			AuthenticationType::NoAuthentication => Outcome::Success(AuthenticationPayload(None)),
+			// Validate the Bearer token
 			AuthenticationType::Simple => {
 				if let Some(authorization) = request.headers().get_one("authorization") {
 					let parts: Vec<_> = authorization.split(" ").collect();
 					if parts.len() == 2 {
 						if parts[0] == "Bearer" {
-							// TODO Fetch config secret
 							let token_data = decode::<UserPayload>(
 								&parts[1],
 								&state.config.secret.unsecure(),

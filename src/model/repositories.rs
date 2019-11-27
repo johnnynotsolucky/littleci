@@ -1,11 +1,11 @@
-use chrono::NaiveDateTime;
+use chrono::{Utc, NaiveDateTime};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use diesel::{insert_into, update};
-use serde::Serialize;
 use serde_json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use serde_derive::{Serialize, Deserialize};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -18,21 +18,33 @@ use crate::{kebab_case, HashedValue};
 
 use super::schema;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Repository {
+	#[serde(skip_deserializing)]
 	pub id: String,
+	#[serde(skip_deserializing)]
 	pub slug: String,
 	pub name: String,
+	#[serde(default)]
 	pub run: String,
+	#[serde(default)]
 	pub working_dir: Option<String>,
+	#[serde(skip_deserializing)]
 	pub secret: String,
+	#[serde(default)]
 	pub variables: HashMap<String, String>,
+	#[serde(default)]
 	pub triggers: Vec<Trigger>,
+	#[serde(default)]
 	pub webhooks: Vec<String>,
-	#[serde(serialize_with = "serialize_date")]
+	#[serde(skip_deserializing, default = "utc_now", serialize_with = "serialize_date")]
 	pub created_at: NaiveDateTime,
-	#[serde(serialize_with = "serialize_date")]
+	#[serde(skip_deserializing, default = "utc_now", serialize_with = "serialize_date")]
 	pub updated_at: NaiveDateTime,
+}
+
+fn utc_now() -> NaiveDateTime {
+	Utc::now().naive_utc()
 }
 
 impl From<RepositoryRecord> for Repository {
@@ -243,6 +255,19 @@ impl Repositories {
 			.into_iter()
 			.map(|r| Repository::from(r))
 			.collect()
+	}
+
+	pub fn find_by_id(&self, repository_id: &str) -> Option<Repository> {
+		use schema::repositories::dsl::*;
+
+		let record = repositories
+			.filter(id.eq(repository_id))
+			.first::<RepositoryRecord>(&self.establish_connection());
+
+		match record {
+			Ok(record) => Some(Repository::from(record)),
+			Err(_) => None,
+		}
 	}
 
 	pub fn find_by_slug(&self, repository_slug: &str) -> Option<Repository> {
