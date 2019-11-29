@@ -162,12 +162,12 @@ impl Queues {
 		};
 	}
 
-	pub fn next_queued(&self, repository_id: &str) -> Option<QueueItem> {
+	pub fn next_queued(&self, record_id: &str) -> Option<QueueItem> {
 		use schema::queue::dsl::*;
 
 		let (queued_status, _) = ExecutionStatus::Queued.into();
 		let record = queue
-			.filter(id.eq(repository_id))
+			.filter(repository_id.eq(record_id))
 			.filter(status.eq(queued_status))
 			.order(created_at.desc())
 			.first::<QueueRecord>(&self.establish_connection());

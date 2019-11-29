@@ -129,13 +129,17 @@ impl QueueManager {
 		}
 	}
 
-	pub fn push(&self, repository_name: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
+	pub fn push(&self, repository_slug: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
+		let repositories_model = Repositories::new(self.config.clone());
+
 		let mut service_item: Option<(QueueService, QueueItem)> = None;
 		// First see if we the service already exists in the queues map.
 		{
 			let queues = self.queues.read();
-			if let Some(queue) = queues.get(repository_name) {
-				service_item = Some((queue.clone(), QueueItem::new(repository_name, data.clone())));
+			if let Some(queue) = queues.get(repository_slug) {
+				if let Some(repository) = repositories_model.find_by_slug(&repository_slug) {
+					service_item = Some((queue.clone(), QueueItem::new(&repository.id, data.clone())));
+				}
 			}
 		}
 
@@ -143,10 +147,9 @@ impl QueueManager {
 		// XXX This seems a bit tacky, but I couldn't think of another way of doing this without
 		// createing a read lock and blocking a write lock if we needed to create a new service.
 		if service_item.is_none() {
-			let repositories_model = Repositories::new(self.config.clone());
-
-			match repositories_model.find_by_slug(&repository_name) {
+			match repositories_model.find_by_slug(&repository_slug) {
 				Some(repository) => {
+					let repository_id = repository.id.clone();
 					let queue = QueueService::new(
 						repository.name.clone(),
 						self.config.clone(),
@@ -154,14 +157,14 @@ impl QueueManager {
 					);
 
 					let mut queues = self.queues.write();
-					queues.insert(repository_name.clone().into(), queue.clone());
+					queues.insert(repository_slug.clone().into(), queue.clone());
 
-					service_item = Some((queue, QueueItem::new(repository_name, data)));
+					service_item = Some((queue, QueueItem::new(&repository_id, data)));
 				}
 				None => {
 					return Err(format_err!(
 						"Could not find queue with name {}",
-						repository_name
+						repository_slug
 					))
 				}
 			}

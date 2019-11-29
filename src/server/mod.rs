@@ -57,11 +57,6 @@ pub enum SecretKeyError {
 fn secret_key_is_valid(secret: &str, repository: &Repository) -> bool {
 	let secret = SecStr::from(secret);
 	let repository_secret = SecStr::from(repository.secret.clone());
-	println!(
-		"{} == {}",
-		std::str::from_utf8(secret.clone().unsecure()).unwrap(),
-		std::str::from_utf8(repository_secret.clone().unsecure()).unwrap(),
-	);
 	secret == repository_secret
 }
 
@@ -381,12 +376,12 @@ pub fn jobs(
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
-		Some(_) => repository,
+		Some(repository) => repository,
 		None => return Err(format!("Repository `{}` does not exist", repository)),
 	};
 
 	let queues_model = Queues::new(state.config.clone());
-	match queues_model.all(&repository) {
+	match queues_model.all(&repository.id) {
 		Ok(jobs) => Ok(Json(
 			jobs.into_iter()
 				.map(|job| Response {
@@ -397,7 +392,7 @@ pub fn jobs(
 		)),
 		Err(error) => Err(format!(
 			"Unable to fetch jobs for repository {}. {}",
-			repository, error
+			repository.slug, error
 		)),
 	}
 }
