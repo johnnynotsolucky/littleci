@@ -4,19 +4,18 @@
 extern crate diesel;
 
 use argon2::{self, Config, ThreadMode, Variant, Version};
-use clap::{clap_app, value_t, ArgMatches};
-use directories::ProjectDirs;
-use failure::{format_err, Error};
+use clap::clap_app;
+use failure::Error;
 use fern::colors::{Color, ColoredLevelConfig};
 use regex::Regex;
 use secstr::SecStr;
 use sha3::{Digest, Sha3_256};
-use std::collections::HashMap;
 use std::convert::{From, Into};
+use std::env::current_dir;
 use std::fmt::Write;
-use std::fs::{self, create_dir_all};
 use std::process;
 use std::sync::Arc;
+use std::path::Path;
 
 mod config;
 mod model;
@@ -25,15 +24,13 @@ mod server;
 mod util;
 
 use crate::config::{
-	app_config_path, load_app_config, AppConfig, AuthenticationType, PersistedConfig,
+	load_app_config, AppConfig, PersistedConfig,
 };
-use crate::queue::{QueueManager, QueueService};
+use crate::queue::QueueManager;
 use crate::server::start_server;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-
-const DEFAULT_PORT: u16 = 8000;
 
 pub const ALPHA_NUMERIC: [char; 62] = [
 	'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i',
@@ -106,16 +103,39 @@ impl Into<String> for HashedPassword {
 pub struct AppState {
 	config: Arc<AppConfig>,
 	queue_manager: Arc<QueueManager>,
-	queues: Arc<HashMap<String, QueueService>>,
 }
 
 impl From<PersistedConfig> for AppState {
 	fn from(configuration: PersistedConfig) -> Self {
 		let secret: String = HashedValue::new(&configuration.secret).into();
 
+		let working_dir = Path::new(
+				current_dir()
+					.expect("Working directory is invalid")
+					.to_str()
+					.unwrap_or("./")
+			)
+			.canonicalize().expect("Working dir is invalid");
+
+		let config_path = Path::new(&configuration.config_path).canonicalize().expect("Configuration path is invalid");
+
+		let data_dir = match configuration.data_dir {
+			Some(data_dir) => Path::new(&data_dir).canonicalize().expect("Data directory is invalid"),
+			None => {
+				let data_dir: String = match config_path.parent() {
+					Some(parent) => parent.to_str().unwrap_or("./").into(),
+					None => working_dir.to_str().expect("Working dir is invalid").into(),
+				};
+
+				Path::new(&data_dir).canonicalize().expect("Working directory is invalid")
+			}
+		};
+
 		let config = AppConfig {
 			secret: SecStr::from(secret.clone()),
-			data_dir: configuration.data_dir,
+			config_path: config_path.to_str().expect("Configuration path is invalid").into(),
+			working_dir: working_dir.to_str().expect("Configuration path is invalid").into(),
+			data_dir: data_dir.to_str().expect("Data directory is invalid").into(),
 			network_host: configuration.network_host.clone(),
 			site_url: configuration.site_url.unwrap_or(configuration.network_host),
 			port: configuration.port,
@@ -128,55 +148,7 @@ impl From<PersistedConfig> for AppState {
 		Self {
 			config: Arc::new(config),
 			queue_manager: Arc::new(queue_manager),
-			queues: Arc::new(HashMap::new()),
 		}
-	}
-}
-
-fn generate_config(matches: &ArgMatches) -> Result<String, Error> {
-	let secret = nanoid::custom(16, &nanoid::alphabet::SAFE);
-
-	let project_dirs = match ProjectDirs::from("dev", "tyrone", "littleci") {
-		Some(project_dirs) => project_dirs,
-		None => return Err(format_err!("Invalid $HOME path")),
-	};
-
-	let default_data_dir = String::from(project_dirs.data_dir().to_str().unwrap());
-	let data_dir = matches.value_of("DATA_DIR").unwrap_or(&default_data_dir);
-
-	let network_host = matches
-		.value_of("NETWORK_HOST")
-		.unwrap_or("0.0.0.0")
-		.to_owned();
-	let site_url = matches
-		.value_of("SITE_URL")
-		.map(|site_url| site_url.to_owned());
-
-	let port = value_t!(matches.value_of("PORT"), u16).unwrap_or(DEFAULT_PORT);
-
-	let log_to_syslog = matches.is_present("SYSLOG");
-
-	let persisted_config = PersistedConfig {
-		secret,
-		data_dir: data_dir.to_string(),
-		network_host,
-		site_url,
-		port,
-		log_to_syslog,
-		authentication_type: AuthenticationType::Simple,
-	};
-
-	let json = serde_json::to_string_pretty(&persisted_config);
-
-	match json {
-		Ok(json) => {
-			let config_dir = String::from(project_dirs.config_dir().to_str().unwrap());
-			create_dir_all(&config_dir)?;
-			let file_path = format!("{}/Settings.json", config_dir);
-			fs::write(&file_path, json)?;
-			Ok(format!("Settings written to {}", file_path))
-		}
-		Err(error) => Err(format_err!("Unable to save config. {}", error)),
 	}
 }
 
@@ -266,40 +238,25 @@ fn main() {
 		(version: "0.1.0")
 		(author: "Tyrone Tudehope")
 		(about: "The littlest CI")
-		(@subcommand configure =>
-			(about: "Pre-configure LittleCI with defaults")
-			(@arg NETWORK_HOST: -h --network_host "Bind to this host or IP address. Default 0.0.0.0")
-			(@arg PORT: -p --port +takes_value +takes_value "TCP Port to bind to")
-			(@arg SITE_URL: -U "External URL which LittleCI can be accessed from. Defaults to NETWORK_HOST")
-			(@arg DATA_DIR: -l --data_dir +takes_value "Location for application output")
-			(@arg SYSLOG: --syslog "Whether or not messages should be logged to syslog")
-		)
-		(@subcommand config_path =>
-			(about: "Returns the full path to LittleCI config")
-		)
 		(@subcommand serve =>
 			(about: "Launch LittleCI's HTTP server")
+			(@arg CONFIG_FILE: --config +takes_value "Path to config file")
 		)
 	)
 	.get_matches();
 
-	if let Some(matches) = command_matches.subcommand_matches("configure") {
-		match generate_config(matches) {
-			Ok(message) => println!("{}", message),
-			Err(error) => eprintln!("Config generation failed. {}", error),
-		}
-	}
-
-	if command_matches.subcommand_matches("config_path").is_some() {
-		println!("{}", app_config_path());
-	}
-
-	if command_matches.subcommand_matches("serve").is_some() {
-		match load_app_config() {
-			Ok(persisted_config) => {
+	if let Some(matches) = command_matches.subcommand_matches("serve") {
+		let working_dir = current_dir().expect("Working directory is invalid");
+		let working_dir = working_dir.to_str().unwrap_or("./");
+		let config_path = matches.value_of("CONFIG_FILE").unwrap_or(working_dir);
+		match load_app_config(config_path) {
+			Ok(mut persisted_config) => {
 				setup_logger(persisted_config.log_to_syslog)
 					.expect("Failed to initialize the logger");
-				if let Err(error) = start_server(persisted_config) {
+
+				persisted_config.config_path = config_path.into();
+				let app_state = AppState::from(persisted_config.clone());
+				if let Err(error) = start_server(app_state) {
 					eprintln!("Unable to start server. {}", error);
 				}
 			}

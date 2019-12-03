@@ -15,9 +15,9 @@ use std::fs::read_to_string;
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use crate::config::{GitTrigger, PersistedConfig, Trigger};
+use crate::config::{GitTrigger, Trigger};
+use crate::model::queues::Queues;
 use crate::model::repositories::{Repositories, Repository};
-use crate::model::queues::{Queues};
 use crate::queue::{ArbitraryData, QueueItem};
 use crate::AppState;
 
@@ -354,14 +354,12 @@ pub fn add_repository(
 				response: repository,
 			}))
 		}
-		Err(error) => {
-			Err(Custom(
-				Status::BadRequest,
-				Json(ErrorResponse::new(
-					format!("Could not create new repository. {}", error).into(),
-				)),
-			))
-		}
+		Err(error) => Err(Custom(
+			Status::BadRequest,
+			Json(ErrorResponse::new(
+				format!("Could not create new repository. {}", error).into(),
+			)),
+		)),
 	}
 }
 
@@ -403,13 +401,20 @@ pub fn log_output(
 	id: &RawStr,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-) -> Result<String, String> {
+) -> Result<String, Custom<Json<ErrorResponse>>> {
 	let repository = repository.as_str();
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
 		Some(_) => repository,
-		None => return Err(format!("Repository `{}` does not exist", repository)),
+		None => {
+			return Err(Custom(
+				Status::NotFound,
+				Json(ErrorResponse::new(
+					format!("Repository `{}` does not exist", repository).into(),
+				)),
+			));
+		}
 	};
 
 	let id = id.as_str();
@@ -423,15 +428,23 @@ pub fn log_output(
 			));
 			match log_output {
 				Ok(log_output) => Ok(log_output),
-				Err(error) => Err(format!(
-					"Unable to read output file for job {}. {}",
-					&id, error
+				Err(_) => Err(Custom(
+					Status::InternalServerError,
+					Json(ErrorResponse::new(
+						format!("Unable to read output file for job `{}`", &id).into(),
+					)),
 				)),
 			}
 		}
-		Err(error) => Err(format!(
-			"Unable to fetch jobs for repository {}. {}",
-			repository, error
+		Err(_) => Err(Custom(
+			Status::NotFound,
+			Json(ErrorResponse::new(
+				format!(
+					"Couldn't find job `{}` for repository `{}`",
+					&id, repository
+				)
+				.into(),
+			)),
 		)),
 	}
 }
@@ -548,9 +561,7 @@ pub fn create_cors_options() -> Cors {
 	.expect("Unable to build CORS Options")
 }
 
-pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
-	let app_state = AppState::from(persisted_config.clone());
-
+pub fn start_server(app_state: AppState) -> Result<(), Error> {
 	// let tmp_user = crate::model::users::NewUserRecord { username: "admin".into(), password: "admin".into() };
 	// let users = crate::model::users::Users::new(app_state.config.clone());
 	// users.create(tmp_user);
@@ -558,8 +569,8 @@ pub fn start_server(persisted_config: PersistedConfig) -> Result<(), Error> {
 	let http_config = Config::build(Environment::Production)
 		// This should never use cookies though?
 		.secret_key(encode(&nanoid::generate(32)))
-		.address(&persisted_config.network_host)
-		.port(persisted_config.port)
+		.address(&app_state.config.network_host)
+		.port(app_state.config.port)
 		.workers(1)
 		.keep_alive(0)
 		.finalize();

@@ -136,6 +136,8 @@ impl From<Repository> for RepositoryResponse {
 #[derive(Serialize, Debug, Clone)]
 pub struct AppConfigResponse {
 	pub signature: String,
+	pub config_path: String,
+	pub working_dir: String,
 	pub data_dir: String,
 	pub network_host: String,
 	pub site_url: String,
@@ -149,6 +151,8 @@ impl From<Arc<AppConfig>> for AppConfigResponse {
 
 		AppConfigResponse {
 			signature,
+			config_path: app_config.config_path.clone(),
+			working_dir: app_config.working_dir.clone(),
 			data_dir: app_config.data_dir.clone(),
 			network_host: app_config.network_host.clone(),
 			site_url: app_config.site_url.clone(),

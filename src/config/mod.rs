@@ -1,4 +1,3 @@
-use directories::ProjectDirs;
 use failure::Error;
 use secstr::SecStr;
 use serde_derive::{Deserialize, Serialize};
@@ -9,7 +8,9 @@ use std::str;
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct PersistedConfig {
 	pub secret: String,
-	pub data_dir: String,
+	#[serde(default)]
+	pub config_path: String,
+	pub data_dir: Option<String>,
 	pub site_url: Option<String>,
 	pub network_host: String,
 	pub port: u16,
@@ -20,6 +21,8 @@ pub struct PersistedConfig {
 #[derive(Debug, Clone)]
 pub struct AppConfig {
 	pub secret: SecStr,
+	pub config_path: String,
+	pub working_dir: String,
 	pub data_dir: String,
 	pub network_host: String,
 	pub site_url: String,
@@ -66,17 +69,8 @@ impl Default for Trigger {
 	}
 }
 
-pub fn app_config_path() -> String {
-	let project_dirs = ProjectDirs::from("org", "littleci", "LittleCI").unwrap();
-	let file_path = format!(
-		"{}/Settings.json",
-		project_dirs.config_dir().to_str().unwrap()
-	);
-	file_path
-}
-
-pub fn load_app_config() -> Result<PersistedConfig, Error> {
-	let file = read_to_string(app_config_path())?;
+pub fn load_app_config(config_path: &str) -> Result<PersistedConfig, Error> {
+	let file = read_to_string(config_path)?;
 	let persisted_config: PersistedConfig = serde_json::from_str(&file).unwrap();
 	Ok(persisted_config)
 }

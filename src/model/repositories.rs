@@ -1,11 +1,11 @@
-use chrono::{Utc, NaiveDateTime};
+use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use diesel::{insert_into, update};
+use serde_derive::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde_derive::{Serialize, Deserialize};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -37,9 +37,17 @@ pub struct Repository {
 	pub triggers: Vec<Trigger>,
 	#[serde(default)]
 	pub webhooks: Vec<String>,
-	#[serde(skip_deserializing, default = "utc_now", serialize_with = "serialize_date")]
+	#[serde(
+		skip_deserializing,
+		default = "utc_now",
+		serialize_with = "serialize_date"
+	)]
 	pub created_at: NaiveDateTime,
-	#[serde(skip_deserializing, default = "utc_now", serialize_with = "serialize_date")]
+	#[serde(
+		skip_deserializing,
+		default = "utc_now",
+		serialize_with = "serialize_date"
+	)]
 	pub updated_at: NaiveDateTime,
 }
 

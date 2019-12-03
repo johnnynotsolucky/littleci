@@ -20,6 +20,26 @@
       <v-row>
         <v-col>
           <v-text-field
+            :value="state.config.config_path"
+            label="Configuration Path"
+            outlined
+            readonly
+          ></v-text-field>
+        </v-col>
+      </v-row>
+      <v-row>
+        <v-col>
+          <v-text-field
+            :value="state.config.working_dir"
+            label="Working Directory"
+            outlined
+            readonly
+          ></v-text-field>
+        </v-col>
+      </v-row>
+      <v-row>
+        <v-col>
+          <v-text-field
             :value="state.config.data_dir"
             label="Data Dir"
             outlined

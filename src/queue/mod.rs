@@ -1,9 +1,9 @@
 use chrono::{NaiveDateTime, Utc};
 use failure::{format_err, Error};
+use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::{Mutex, RwLock};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -138,7 +138,8 @@ impl QueueManager {
 			let queues = self.queues.read();
 			if let Some(queue) = queues.get(repository_slug) {
 				if let Some(repository) = repositories_model.find_by_slug(&repository_slug) {
-					service_item = Some((queue.clone(), QueueItem::new(&repository.id, data.clone())));
+					service_item =
+						Some((queue.clone(), QueueItem::new(&repository.id, data.clone())));
 				}
 			}
 		}
