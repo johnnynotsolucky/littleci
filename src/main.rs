@@ -13,9 +13,9 @@ use sha3::{Digest, Sha3_256};
 use std::convert::{From, Into};
 use std::env::current_dir;
 use std::fmt::Write;
+use std::path::Path;
 use std::process;
 use std::sync::Arc;
-use std::path::Path;
 
 mod config;
 mod model;
@@ -23,9 +23,7 @@ mod queue;
 mod server;
 mod util;
 
-use crate::config::{
-	load_app_config, AppConfig, PersistedConfig,
-};
+use crate::config::{load_app_config, AppConfig, PersistedConfig};
 use crate::queue::QueueManager;
 use crate::server::start_server;
 
@@ -110,31 +108,44 @@ impl From<PersistedConfig> for AppState {
 		let secret: String = HashedValue::new(&configuration.secret).into();
 
 		let working_dir = Path::new(
-				current_dir()
-					.expect("Working directory is invalid")
-					.to_str()
-					.unwrap_or("./")
-			)
-			.canonicalize().expect("Working dir is invalid");
+			current_dir()
+				.expect("Working directory is invalid")
+				.to_str()
+				.unwrap_or("./"),
+		)
+		.canonicalize()
+		.expect("Working dir is invalid");
 
-		let config_path = Path::new(&configuration.config_path).canonicalize().expect("Configuration path is invalid");
+		let config_path = Path::new(&configuration.config_path)
+			.canonicalize()
+			.expect("Configuration path is invalid");
 
 		let data_dir = match configuration.data_dir {
-			Some(data_dir) => Path::new(&data_dir).canonicalize().expect("Data directory is invalid"),
+			Some(data_dir) => Path::new(&data_dir)
+				.canonicalize()
+				.expect("Data directory is invalid"),
 			None => {
 				let data_dir: String = match config_path.parent() {
 					Some(parent) => parent.to_str().unwrap_or("./").into(),
 					None => working_dir.to_str().expect("Working dir is invalid").into(),
 				};
 
-				Path::new(&data_dir).canonicalize().expect("Working directory is invalid")
+				Path::new(&data_dir)
+					.canonicalize()
+					.expect("Working directory is invalid")
 			}
 		};
 
 		let config = AppConfig {
 			secret: SecStr::from(secret.clone()),
-			config_path: config_path.to_str().expect("Configuration path is invalid").into(),
-			working_dir: working_dir.to_str().expect("Configuration path is invalid").into(),
+			config_path: config_path
+				.to_str()
+				.expect("Configuration path is invalid")
+				.into(),
+			working_dir: working_dir
+				.to_str()
+				.expect("Configuration path is invalid")
+				.into(),
 			data_dir: data_dir.to_str().expect("Data directory is invalid").into(),
 			network_host: configuration.network_host.clone(),
 			site_url: configuration.site_url.unwrap_or(configuration.network_host),

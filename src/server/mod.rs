@@ -406,7 +406,7 @@ pub fn log_output(
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
-		Some(_) => repository,
+		Some(repository) => repository,
 		None => {
 			return Err(Custom(
 				Status::NotFound,
@@ -420,7 +420,7 @@ pub fn log_output(
 	let id = id.as_str();
 
 	let queues_model = Queues::new(state.config.clone());
-	match queues_model.job(&repository, &id) {
+	match queues_model.job(&repository.id, &id) {
 		Ok(job) => {
 			let log_output = read_to_string(format!(
 				"{}/jobs/{}/output.log",
@@ -441,7 +441,7 @@ pub fn log_output(
 			Json(ErrorResponse::new(
 				format!(
 					"Couldn't find job `{}` for repository `{}`",
-					&id, repository
+					&id, &repository.slug
 				)
 				.into(),
 			)),
@@ -456,26 +456,39 @@ pub fn job(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
 	routes: State<RouteMap>,
-) -> Result<Json<Response<QueueItem>>, String> {
+) -> Result<Json<Response<QueueItem>>, Custom<Json<ErrorResponse>>> {
 	let repository = repository.as_str();
 	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
-		Some(_) => repository,
-		None => return Err(format!("Repository `{}` does not exist", repository)),
+		Some(repository) => repository,
+		None => {
+			return Err(Custom(
+				Status::NotFound,
+				Json(ErrorResponse::new(
+					format!("Repository `{}` does not exist", repository).into(),
+				)),
+			));
+		}
 	};
 
 	let id = id.as_str();
 
 	let queues_model = Queues::new(state.config.clone());
-	match queues_model.job(&repository, &id) {
+	match queues_model.job(&repository.id, &id) {
 		Ok(job) => Ok(Json(Response {
 			meta: meta_for_queue_item(state.config.clone(), &routes, &job),
 			response: job,
 		})),
-		Err(error) => Err(format!(
-			"Unable to fetch jobs for repository {}. {}",
-			repository, error
+		Err(_) => Err(Custom(
+			Status::NotFound,
+			Json(ErrorResponse::new(
+				format!(
+					"Couldn't find job `{}` for repository `{}`",
+					&id, &repository.slug
+				)
+				.into(),
+			)),
 		)),
 	}
 }
