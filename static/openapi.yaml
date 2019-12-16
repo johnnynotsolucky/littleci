@@ -152,6 +152,27 @@ paths:
                   $ref: '#/components/schemas/Repository'
       security:
         - user_auth: []
+    put:
+      tags:
+        - repositories
+      summary: Update a repository
+      operationId: updateRepository
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Repository'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+      security:
+        - user_auth: []
     get:
       tags:
         - repositories
@@ -331,7 +352,7 @@ components:
       type: object
       properties:
         id:
-          type: String
+          type: string
           description: Identifier
         slug:
           type: string

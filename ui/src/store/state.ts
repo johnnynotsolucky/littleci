@@ -18,14 +18,14 @@ interface Config {
 }
 
 export interface Repository {
-  id: string,
-  slug: string,
+  id?: string,
+  slug?: string,
   name: string,
-  run: string,
-  working_dir: string,
-  variables: {},
-  triggers: [],
-  secret: string,
+  run?: string,
+  working_dir?: string,
+  variables?: {},
+  triggers?: [],
+  secret?: string,
 }
 
 export interface Job {
@@ -61,6 +61,7 @@ const makeRequest = async (url: string, options: object): Promise<Response> => {
 }
 
 export default class State {
+  @observable repositories: Repository[] = []
   @observable user: User | null = null
   @observable config: Config | null = null
 
@@ -83,7 +84,27 @@ export default class State {
     this.user = await response.json()
   }
 
-  @action.bound async getRepositories(): Promise<Repository[]> {
+  @action.bound async saveNewRepository(repository: Repository): Promise<Repository> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await makeRequest(`${baseUrl}/repositories`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+      body: JSON.stringify(repository),
+    })
+
+    const result = await response.json()
+    await this.getRepositories()
+
+    return result
+  }
+
+  @action.bound async getRepositories() {
     if (!this.user) {
       throw new Error('Not logged in')
     }
@@ -101,7 +122,7 @@ export default class State {
       throw new Error(responseObject.message)
     }
 
-    return await response.json()
+    this.repositories = await response.json()
   }
 
   @action.bound async getRepository(slug: string): Promise<Repository> {

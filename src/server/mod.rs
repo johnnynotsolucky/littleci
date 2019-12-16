@@ -5,7 +5,7 @@ use rocket::http::{ContentType, Method, RawStr, Status};
 use rocket::request::{self, FromRequest, Request};
 use rocket::response::status::Custom;
 use rocket::response::{Redirect, Responder};
-use rocket::{catch, catchers, get, post, routes, Outcome, State};
+use rocket::{catch, catchers, get, post, put, routes, Outcome, State};
 use rocket_contrib::json::Json;
 use secstr::SecStr;
 use serde_derive::{Deserialize, Serialize};
@@ -363,6 +363,36 @@ pub fn add_repository(
 	}
 }
 
+#[put("/repositories", format = "json", data = "<data>")]
+pub fn update_repository(
+	data: Json<Repository>,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+	routes: State<RouteMap>,
+) -> Result<Json<Response<RepositoryResponse>>, Custom<Json<ErrorResponse>>> {
+	let data = data.into_inner();
+	let record = Repositories::new(state.config.clone()).save(data);
+	match record {
+		Ok(record) => {
+			let repository = RepositoryResponse::from(record);
+			Ok(Json(Response {
+				meta: meta_for_repository(&state.config, &routes, &repository),
+				response: repository,
+			}))
+		}
+		Err(error) => {
+			error!("Error saving repository: {}", error);
+
+			Err(Custom(
+				Status::BadRequest,
+				Json(ErrorResponse::new(
+					format!("Could not update repository").into(),
+				)),
+			))
+		},
+	}
+}
+
 #[get("/repositories/<repository>/jobs")]
 pub fn jobs(
 	repository: &RawStr,
@@ -598,6 +628,7 @@ pub fn start_server(app_state: AppState) -> Result<(), Error> {
 				repositories,
 				repository,
 				add_repository,
+				update_repository,
 				jobs,
 				job,
 				log_output,

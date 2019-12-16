@@ -92,7 +92,6 @@ export default class App extends Vue {
   get items() {
     return [
       ...this.mappedRepositories,
-      { icon: 'fas fa-plus', text: 'New Repository' },
       { icon: 'fas fa-tasks', text: 'Manage Repositories', to: '/manage/repositories' },
       { divider: true },
       { icon: 'fas fa-users', text: 'Users', to: '/manage/users' },
@@ -102,7 +101,7 @@ export default class App extends Vue {
   }
 
   get mappedRepositories() {
-    return this.repositories.map((repository) => ({
+    return this.state.repositories.map((repository) => ({
       text: repository.name,
       to : `/repositories/${repository.slug}`,
     }))
@@ -111,7 +110,7 @@ export default class App extends Vue {
   @Watch('state.loggedIn', { immediate: true })
   async onLoggedInChanged(loggedIn: boolean) {
     if (loggedIn) {
-      this.repositories = await this.state.getRepositories()
+      await this.state.getRepositories()
     }
   }
 }

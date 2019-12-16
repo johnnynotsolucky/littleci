@@ -1,7 +1,6 @@
 use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use diesel::{insert_into, update};
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
@@ -20,7 +19,7 @@ use super::schema;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Repository {
-	#[serde(skip_deserializing)]
+	#[serde(default)]
 	pub id: String,
 	#[serde(skip_deserializing)]
 	pub slug: String,
@@ -204,6 +203,12 @@ impl Repositories {
 
 	pub fn create(&self, repository: Repository) -> Result<Repository, String> {
 		use schema::repositories::dsl::*;
+
+		let repository_slug = kebab_case(&repository.name);
+		if self.find_by_slug(&repository_slug).is_some() {
+			return Err(format!("Repository slug already exists"));
+		}
+
 		let conn = self.establish_connection();
 
 		let repository = NewRepositoryRecord::from(repository);
@@ -211,11 +216,11 @@ impl Repositories {
 		let repository_id = nanoid::custom(24, &crate::ALPHA_NUMERIC);
 		let repository_secret: String = HashedValue::new(&nanoid::generate(32)).into();
 
-		let result = insert_into(repositories)
+		let result = diesel::insert_into(repositories)
 			.values((
 				&repository,
 				id.eq(&repository_id),
-				slug.eq(&kebab_case(&repository.name)),
+				slug.eq(&repository_slug),
 				secret.eq(&repository_secret),
 			))
 			.execute(&conn);
@@ -234,20 +239,41 @@ impl Repositories {
 		}
 	}
 
-	pub fn save(&self, repository: Repository) -> Result<(), String> {
+	pub fn save(&self, repository: Repository) -> Result<Repository, String> {
 		use schema::repositories::dsl::*;
+
+		let repository_slug = kebab_case(&repository.name);
+		if let Some(existing_repository) = self.find_by_slug(&repository_slug) {
+			if &existing_repository.id != &repository.id {
+				return Err(format!("Repository slug already exists"));
+			}
+		}
+
+		let conn = self.establish_connection();
 
 		let mut repository = RepositoryRecord::from(repository);
 
 		repository.slug = kebab_case(&repository.name);
 
-		let result = diesel::update(repositories)
-			.set((repository, RepositorySecret::as_none()))
-			.execute(&self.establish_connection());
+		let result = diesel::update(repositories.filter(id.eq(&repository.id)))
+			.set((
+				&repository,
+				slug.eq(&kebab_case(&repository.name)),
+				RepositorySecret::as_none()
+			))
+			.execute(&conn);
 
 		match result {
 			Err(error) => Err(format!("Unable to save repository. {}", error)),
-			_ => Ok(()),
+			_ => {
+				match repositories
+					.filter(id.eq(repository.id))
+					.first::<RepositoryRecord>(&conn)
+				{
+					Ok(record) => Ok(Repository::from(record)),
+					Err(error) => Err(format!("Unable to fetch saved repository. {}", error)),
+				}
+			}
 		}
 	}
 

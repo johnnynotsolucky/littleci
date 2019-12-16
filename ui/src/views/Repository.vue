@@ -5,13 +5,22 @@
       dark
     >
       <v-toolbar-title>{{ repository && repository.name }}</v-toolbar-title>
+      <v-spacer />
+      <v-toolbar-items>
+        <v-btn :to="`/manage/repositories/${repository.slug}`">
+          Edit
+          <v-icon right small>fas fa-edit</v-icon>
+        </v-btn>
+        <v-btn @click="onBuild">
+          Build
+          <v-icon right small>fas fa-clock</v-icon>
+        </v-btn>
+      </v-toolbar-items>
     </v-toolbar>
     <v-container
       fluid
       class="grey lighten-4 fill-height"
     >
-      <v-row>
-      </v-row>
       <v-row>
         <v-layout child-flex>
           <v-data-table
