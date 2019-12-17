@@ -169,7 +169,7 @@ impl Queues {
 		let record = queue
 			.filter(repository_id.eq(record_id))
 			.filter(status.eq(queued_status))
-			.order(created_at.desc())
+			.order(created_at.asc())
 			.first::<QueueRecord>(&self.establish_connection());
 
 		match record {

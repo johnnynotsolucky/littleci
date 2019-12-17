@@ -92,7 +92,13 @@ export default class Repository extends Vue {
         value: 'id',
       },
       {
-        text: 'Time',
+        text: 'Added',
+        align: 'left',
+        sortable: false,
+        value: 'created_at',
+      },
+      {
+        text: 'Updated',
         align: 'left',
         sortable: false,
         value: 'updated_at',
@@ -107,7 +113,9 @@ export default class Repository extends Vue {
   }
 
   onItemClick(item: Job) {
-    this.$router.push(`/repositories/${this.slug}/jobs/${item.id}`)
+    if (item.status !== 'queued') {
+      this.$router.push(`/repositories/${this.slug}/jobs/${item.id}`)
+    }
   }
 
   async onBuildClick() {

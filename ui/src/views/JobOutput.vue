@@ -6,6 +6,10 @@
       dark
     >
       <v-toolbar-title>{{ job.id }}</v-toolbar-title>
+      <v-spacer />
+      <v-toolbar-items>
+        <v-chip dark class="align-self-center">{{ job.status }}</v-chip>
+      </v-toolbar-items>
     </v-toolbar>
     <v-container
       fluid
