@@ -10,7 +10,7 @@ use log::{debug, error, info, warn};
 
 use crate::config::AppConfig;
 use crate::model::queues::Queues;
-use crate::model::repositories::{Repositories, Repository};
+use crate::model::repositories::Repositories;
 use crate::util::serialize_date;
 
 mod job;
@@ -154,7 +154,7 @@ impl QueueManager {
 					let queue = QueueService::new(
 						repository.name.clone(),
 						self.config.clone(),
-						Arc::new(repository),
+						Arc::new(repository.id.clone()),
 					);
 
 					let mut queues = self.queues.write();
@@ -188,17 +188,17 @@ pub struct ProcessingQueue;
 pub struct QueueService {
 	pub name: Arc<String>,
 	pub config: Arc<AppConfig>,
-	pub repository: Arc<Repository>,
+	pub repository_id: Arc<String>,
 	pub processing_queue: Arc<Mutex<ProcessingQueue>>,
 	pub runner: Arc<dyn JobRunner>,
 }
 
 impl QueueService {
-	fn new(name: String, config: Arc<AppConfig>, repository: Arc<Repository>) -> Self {
+	fn new(name: String, config: Arc<AppConfig>, repository_id: Arc<String>) -> Self {
 		Self {
 			name: Arc::new(name),
 			config,
-			repository,
+			repository_id,
 			processing_queue: Arc::new(Mutex::new(ProcessingQueue)),
 			runner: Arc::new(CommandRunner),
 		}

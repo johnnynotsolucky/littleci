@@ -36,6 +36,8 @@ pub struct Repository {
 	pub triggers: Vec<Trigger>,
 	#[serde(default)]
 	pub webhooks: Vec<String>,
+	#[serde(skip)]
+	pub deleted: i32,
 	#[serde(
 		skip_deserializing,
 		default = "utc_now",
@@ -87,6 +89,7 @@ impl From<RepositoryRecord> for Repository {
 			variables,
 			triggers,
 			webhooks,
+			deleted: record.deleted,
 			created_at: record.created_at,
 			updated_at: record.updated_at,
 		}
@@ -109,6 +112,7 @@ pub struct RepositoryRecord {
 	/// I'm just going to store JSON in here for now
 	pub triggers: Option<String>,
 	pub webhooks: Option<String>,
+	pub deleted: i32,
 	pub created_at: NaiveDateTime,
 	pub updated_at: NaiveDateTime,
 }
@@ -134,6 +138,7 @@ impl From<Repository> for RepositoryRecord {
 				serde_json::to_string(&record.webhooks)
 					.expect("Unable to serialize webhooks to JSON".into()),
 			),
+			deleted: record.deleted,
 			created_at: record.created_at,
 			updated_at: record.updated_at,
 		}
@@ -281,6 +286,7 @@ impl Repositories {
 		use schema::repositories::dsl::*;
 
 		repositories
+			.filter(deleted.eq(0))
 			.load::<RepositoryRecord>(&self.establish_connection())
 			.unwrap_or_else(|error| {
 				error!("Error fetching repositories. {}", error);
@@ -314,6 +320,21 @@ impl Repositories {
 		match record {
 			Ok(record) => Some(Repository::from(record)),
 			Err(_) => None,
+		}
+	}
+
+	pub fn delete_by_id(&self, repository_id: &str) -> Result<(), String> {
+		use schema::repositories::dsl::*;
+
+		let result = diesel::update(repositories.filter(id.eq(&repository_id)))
+			.set(deleted.eq(1))
+			.execute(&self.establish_connection());
+
+		match result {
+			Err(error) => Err(format!("Unable to save repository. {}", error)),
+			_ => {
+				Ok(())
+			}
 		}
 	}
 }

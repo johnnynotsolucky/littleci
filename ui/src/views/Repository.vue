@@ -1,5 +1,9 @@
 <template>
-  <v-card flat style="border-radius: 0;">
+  <v-card
+    v-if="repository"
+    flat
+    style="border-radius: 0;"
+  >
     <v-toolbar
       flat
       dark
@@ -11,7 +15,7 @@
           Edit
           <v-icon right small>fas fa-edit</v-icon>
         </v-btn>
-        <v-btn @click="onBuild">
+        <v-btn @click="onBuildClick">
           Build
           <v-icon right small>fas fa-clock</v-icon>
         </v-btn>
@@ -58,14 +62,25 @@ export default class Repository extends Vue {
   private repository: RepositoryType | null = null
   private jobs: Job[] = []
 
+  private interval!: any | null
+
   @Watch('$route', { immediate: true })
   async onUrlChanged(to: any) {
+    if (this.interval) {
+      clearInterval(this.interval)
+      this.interval = null
+    }
+
     this.slug = to.params.repository
     if (this.slug) {
       [this.repository, this.jobs] = await Promise.all([
         await this.state.getRepository(this.slug),
         await this.state.getRepositoryJobs(this.slug),
       ])
+
+      this.interval = setInterval(async () => {
+          this.jobs = await this.state.getRepositoryJobs(this.slug)
+      }, 5000)
     }
   }
 
@@ -93,6 +108,19 @@ export default class Repository extends Vue {
 
   onItemClick(item: Job) {
     this.$router.push(`/repositories/${this.slug}/jobs/${item.id}`)
+  }
+
+  async onBuildClick() {
+    if (this.repository !== null) {
+      await this.state.triggerBuild(this.repository)
+    }
+  }
+
+  destroyed() {
+    if (this.interval) {
+      clearInterval(this.interval)
+      this.interval = null
+    }
   }
 }
 </script>

@@ -4,6 +4,7 @@ import Home from './views/Home.vue'
 import Repository from './views/Repository.vue'
 import ManageRepositories from './views/ManageRepositories.vue'
 import NewRepository from './views/NewRepository.vue'
+import UpdateRepository from './views/UpdateRepository.vue'
 import JobOutput from './views/JobOutput.vue'
 
 Vue.use(Router)
@@ -36,6 +37,11 @@ export default new Router({
       path: '/manage/repositories/new',
       name: 'new_repository',
       component: NewRepository,
+    },
+    {
+      path: '/manage/repositories/:repository',
+      name: 'new_repository',
+      component: UpdateRepository,
     },
     {
       path: '/config',

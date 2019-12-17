@@ -5,7 +5,7 @@ use rocket::http::{ContentType, Method, RawStr, Status};
 use rocket::request::{self, FromRequest, Request};
 use rocket::response::status::Custom;
 use rocket::response::{Redirect, Responder};
-use rocket::{catch, catchers, get, post, put, routes, Outcome, State};
+use rocket::{catch, catchers, get, post, put, delete, routes, Outcome, State};
 use rocket_contrib::json::Json;
 use secstr::SecStr;
 use serde_derive::{Deserialize, Serialize};
@@ -393,6 +393,28 @@ pub fn update_repository(
 	}
 }
 
+#[delete("/repositories/<id>")]
+pub fn delete_repository(
+	id: &RawStr,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<(), Custom<Json<ErrorResponse>>> {
+	let result = Repositories::new(state.config.clone()).delete_by_id(id.as_str());
+	match result {
+		Ok(_) => Ok(()),
+		Err(error) => {
+			error!("Error deleting repository: {}", error);
+
+			Err(Custom(
+				Status::BadRequest,
+				Json(ErrorResponse::new(
+					format!("Could not delete repository").into(),
+				)),
+			))
+		},
+	}
+}
+
 #[get("/repositories/<repository>/jobs")]
 pub fn jobs(
 	repository: &RawStr,
@@ -592,7 +614,7 @@ use rocket_cors::{
 pub fn create_cors_options() -> Cors {
 	CorsOptions {
 		allowed_origins: AllowedOrigins::all(),
-		allowed_methods: vec![Method::Get, Method::Post]
+		allowed_methods: vec![Method::Get, Method::Put, Method::Post, Method::Delete]
 			.into_iter()
 			.map(From::from)
 			.collect(),
@@ -629,6 +651,7 @@ pub fn start_server(app_state: AppState) -> Result<(), Error> {
 				repository,
 				add_repository,
 				update_repository,
+				delete_repository,
 				jobs,
 				job,
 				log_output,

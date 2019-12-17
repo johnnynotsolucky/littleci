@@ -1,10 +1,11 @@
 <template>
   <v-card flat style="border-radius: 0;">
     <v-toolbar
+      v-if="job"
       flat
       dark
     >
-      <v-toolbar-title v-if="job">{{ job.id }}</v-toolbar-title>
+      <v-toolbar-title>{{ job.id }}</v-toolbar-title>
     </v-toolbar>
     <v-container
       fluid
@@ -29,7 +30,7 @@ export default class JobOutput extends Vue {
   private state = state
   private slug!: string
   private jobId!: string
-  private job!: Job
+  private job: Job | null = null
 
   private output: string | null = null
 
@@ -54,14 +55,23 @@ export default class JobOutput extends Vue {
       }
 
       await getJobDetails()
-      setInterval(async () => {
+      this.interval = setInterval(async () => {
         // Only poll if the job is still running
-        if (this.job.status !== 'completed') {
-          await getJobDetails()
-        } else {
-          clearInterval(this.interval)
+        if (this.job) {
+          if (this.job.status !== 'completed') {
+            await getJobDetails()
+          } else {
+            clearInterval(this.interval)
+          }
         }
       }, 2000)
+    }
+  }
+
+  destroyed() {
+    if (this.interval) {
+      clearInterval(this.interval)
+      this.interval = null
     }
   }
 }

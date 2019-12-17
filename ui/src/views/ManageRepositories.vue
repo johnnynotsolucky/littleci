@@ -37,7 +37,7 @@
               <v-btn class="mr-2" text icon :to="`/manage/repositories/${item.slug}`">
                 <v-icon small>fas fa-edit</v-icon>
               </v-btn>
-              <v-btn class="mr-2" text icon @onClick="deleteRepository">
+              <v-btn class="mr-2" text icon @click="deleteRepository(item.id)">
                 <v-icon small>fas fa-trash</v-icon>
               </v-btn>
             </template>
@@ -83,6 +83,15 @@ export default class ManageRepositories extends Vue {
         value: 'action',
       },
     ]
+  }
+
+  async mounted() {
+    await this.state.getRepositories()
+  }
+
+  async deleteRepository(id: string) {
+    await this.state.deleteRepository(id)
+    await this.state.getRepositories()
   }
 }
 </script>

@@ -104,6 +104,26 @@ export default class State {
     return result
   }
 
+  @action.bound async saveRepository(repository: Repository): Promise<Repository> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await makeRequest(`${baseUrl}/repositories`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+      body: JSON.stringify(repository),
+    })
+
+    const result = await response.json()
+    await this.getRepositories()
+
+    return result
+  }
+
   @action.bound async getRepositories() {
     if (!this.user) {
       throw new Error('Not logged in')
@@ -144,6 +164,44 @@ export default class State {
     }
 
     return await response.json()
+  }
+
+  @action.bound async triggerBuild(repository: Repository): Promise<Repository> {
+    const response = await fetch(`${baseUrl}/notify/${repository.slug}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Secret-Key': repository.secret || '',
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return await response.json()
+  }
+
+  @action.bound async deleteRepository(repositoryId: string): Promise<boolean> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await fetch(`${baseUrl}/repositories/${repositoryId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return true
   }
 
   @action.bound async getRepositoryJobs(repository: string): Promise<Job[]> {

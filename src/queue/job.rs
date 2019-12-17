@@ -12,7 +12,7 @@ use log::{debug, error, info, warn};
 
 use super::{ExecutionStatus, QueueItem, QueueService};
 use crate::model::queues::Queues;
-use crate::model::repositories::Repository;
+use crate::model::repositories::{Repositories, Repository};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct QueueItemData {
@@ -52,7 +52,6 @@ impl JobRunner for CommandRunner {
 			let queue_name = queue_service.name.clone();
 			let queue_name = (&*queue_name).to_owned();
 			let processing_queue = queue_service.processing_queue.clone();
-			let repository = queue_service.repository.clone();
 
 			// Acquire a lock so that we can ensure that only a single thread per queue is spawned.
 			// When `notify` is called we can try acquire a lock, if unsuccessful we can safely
@@ -63,6 +62,17 @@ impl JobRunner for CommandRunner {
 				debug!("Queue {} checking for new jobs", queue_name);
 
 				loop {
+					// Refresh the repository in case it changed between builds
+					let repository = Repositories::new(queue_service.config.clone()).find_by_id(&queue_service.repository_id);
+
+					let repository = match repository {
+						Some(repository) => repository,
+						None => {
+							error!("Could not find repository with ID {}", &queue_service.repository_id);
+							return
+						}
+					};
+
 					let queue_model = Queues::new(queue_service.config.clone());
 					let item = queue_model.next_queued(&repository.id);
 
