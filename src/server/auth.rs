@@ -12,11 +12,17 @@ use crate::{AppState, HashedPassword};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserPayload {
-	username: String,
-	exp: u128,
+	pub username: String,
+	pub exp: u128,
 }
 
 pub struct AuthenticationPayload(Option<UserPayload>);
+
+impl Into<Option<UserPayload>> for AuthenticationPayload {
+	fn into(self) -> Option<UserPayload> {
+		self.0
+	}
+}
 
 impl<'a, 'r> FromRequest<'a, 'r> for AuthenticationPayload {
 	type Error = String;

@@ -28,6 +28,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserResponse'
+  '/jobs':
+    get:
+      tags:
+        - jobs
+      summary: Get a list of all jobs
+      operationId: getAllJobs
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobSummary'
+      security:
+        - user_auth: []
   '/repositories/{repositoryName}/jobs/{jobId}/output':
     get:
       tags:
@@ -207,6 +224,99 @@ paths:
                   $ref: '#/components/schemas/Repository'
       security:
         - user_auth: []
+  /users:
+    get:
+      tags:
+        - users
+      summary: Get a list of users
+      operationId: getUsers
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+      security:
+        - user_auth: []
+    post:
+      tags:
+        - users
+      summary: Add a new user
+      operationId: addUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+      security:
+        - user_auth: []
+    put:
+      tags:
+        - users
+      summary: Update a new user
+      operationId: updateUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+      security:
+        - user_auth: []
+  /users/password:
+    put:
+      tags:
+        - users
+      summary: Set current users password
+      operationId: setPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPassword'
+      responses:
+        '200':
+          description: successful operation
+      security:
+        - user_auth: []
+  '/users/{userId}':
+    delete:
+      tags:
+        - users
+      summary: Delete a user
+      operationId: deleteUser
+      parameters:
+        - name: userId
+          in: path
+          description: ID of user
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+      security:
+        - user_auth: []
   /config:
     get:
       tags:
@@ -336,6 +446,27 @@ components:
         - running
         - failed
         - completed
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: User ID
+        username:
+          type: string
+        password:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UserPassword:
+      type: object
+      properties:
+        password:
+          type: string
     Job:
       type: object
       properties:
@@ -366,6 +497,26 @@ components:
             $ref: '#/components/schemas/ExecutionLog'
         _meta:
           type: object
+    JobSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Job ID
+        status:
+          $ref: '#/components/schemas/ExecutionStatus'
+        repository_slug:
+          type: string
+          description: Slug of the repository associated with this job
+        repository_name:
+          type: string
+          description: Repository name
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     Repository:
       type: object
       properties:

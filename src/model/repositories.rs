@@ -1,4 +1,4 @@
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use serde_derive::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use log::{debug, error, info, warn};
 use schema::repositories;
 
 use crate::config::{AppConfig, Trigger};
-use crate::util::serialize_date;
+use crate::util::{serialize_date, utc_now};
 use crate::{kebab_case, HashedValue};
 
 use super::schema;
@@ -50,10 +50,6 @@ pub struct Repository {
 		serialize_with = "serialize_date"
 	)]
 	pub updated_at: NaiveDateTime,
-}
-
-fn utc_now() -> NaiveDateTime {
-	Utc::now().naive_utc()
 }
 
 impl From<RepositoryRecord> for Repository {
@@ -264,7 +260,7 @@ impl Repositories {
 			.set((
 				&repository,
 				slug.eq(&kebab_case(&repository.name)),
-				RepositorySecret::as_none()
+				RepositorySecret::as_none(),
 			))
 			.execute(&conn);
 
@@ -332,9 +328,7 @@ impl Repositories {
 
 		match result {
 			Err(error) => Err(format!("Unable to save repository. {}", error)),
-			_ => {
-				Ok(())
-			}
+			_ => Ok(()),
 		}
 	}
 }

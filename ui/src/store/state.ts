@@ -39,6 +39,15 @@ export interface Job {
   logs: Log[],
 }
 
+export interface JobSummary {
+  id: string,
+  status: string,
+  repository_slug: string,
+  repository_name: string,
+  created_at: Date,
+  updated_at: Date,
+}
+
 export interface Log {
   status: string,
   exit_code: number,
@@ -202,6 +211,27 @@ export default class State {
     }
 
     return true
+  }
+
+  @action.bound async getAllJobs(): Promise<JobSummary[]> {
+    if (!this.user) {
+      throw new Error('Not logged in')
+    }
+
+    const response = await fetch(`${baseUrl}/jobs`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.user.token}`,
+      },
+    })
+
+    if (!response.ok) {
+      const responseObject: ErrorResponse = await response.json()
+      throw new Error(responseObject.message)
+    }
+
+    return await response.json()
   }
 
   @action.bound async getRepositoryJobs(repository: string): Promise<Job[]> {

@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import Router from 'vue-router'
-import Home from './views/Home.vue'
+import Dashboard from './views/Dashboard.vue'
 import Repository from './views/Repository.vue'
 import ManageRepositories from './views/ManageRepositories.vue'
 import NewRepository from './views/NewRepository.vue'
@@ -15,8 +15,8 @@ export default new Router({
   routes: [
     {
       path: '/',
-      name: 'home',
-      component: Home,
+      name: 'dashboard',
+      component: Dashboard,
     },
     {
       path: '/repositories/:repository',

@@ -3,6 +3,7 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use diesel::{insert_into, update};
 use failure::{format_err, Error};
+use serde_derive::Serialize;
 use serde_json;
 use std::sync::Arc;
 
@@ -12,9 +13,41 @@ use log::{debug, error, info, warn};
 use schema::{queue, queue_logs};
 
 use crate::config::AppConfig;
+use crate::model::repositories::{Repository, RepositoryRecord};
 use crate::queue::{ExecutionStatus, QueueItem, QueueLogItem};
+use crate::util::serialize_date;
 
 use super::schema;
+
+#[derive(Serialize, Debug, Clone)]
+pub struct JobSummary {
+	id: String,
+	#[serde(flatten)]
+	status: ExecutionStatus,
+	repository_slug: String,
+	repository_name: String,
+	#[serde(serialize_with = "serialize_date")]
+	created_at: NaiveDateTime,
+	#[serde(serialize_with = "serialize_date")]
+	updated_at: NaiveDateTime,
+}
+
+impl From<(QueueRecord, RepositoryRecord)> for JobSummary {
+	fn from(record: (QueueRecord, RepositoryRecord)) -> Self {
+		let (job, repository) = record;
+		let job = QueueItem::from((job, Vec::new()));
+		let repository = Repository::from(repository);
+
+		Self {
+			id: job.id,
+			status: job.status,
+			repository_slug: repository.slug,
+			repository_name: repository.name,
+			created_at: job.created_at,
+			updated_at: job.updated_at,
+		}
+	}
+}
 
 #[derive(Identifiable, Queryable, AsChangeset, PartialEq, Debug, Clone)]
 #[table_name = "queue"]
@@ -232,7 +265,29 @@ impl Queues {
 		}
 	}
 
-	pub fn all(&self, repository: &str) -> Result<Vec<QueueItem>, Error> {
+	pub fn all(&self) -> Result<Vec<JobSummary>, Error> {
+		use schema::repositories;
+
+		let conn = self.establish_connection();
+
+		let records = queue::table
+			.order(queue::dsl::created_at.desc())
+			.inner_join(repositories::table)
+			.load::<(QueueRecord, RepositoryRecord)>(&conn);
+
+		match records {
+			Ok(records) => Ok(records
+				.into_iter()
+				.map(|record| JobSummary::from(record))
+				.collect()),
+			Err(error) => {
+				error!("Unable to fetch jobs. {}", error);
+				Err(format_err!("Unable to fetch jobs.",))
+			}
+		}
+	}
+
+	pub fn all_for_repository(&self, repository: &str) -> Result<Vec<QueueItem>, Error> {
 		use schema::queue::dsl::*;
 
 		let records = queue

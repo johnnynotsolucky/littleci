@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use rocket::Route as RocketRoute;
 use serde_derive::Serialize;
 use std::collections::HashMap;
@@ -6,7 +7,9 @@ use std::sync::Arc;
 
 use crate::config::{AppConfig, Trigger};
 use crate::model::repositories::{Repositories, Repository};
+use crate::model::users::User;
 use crate::queue::QueueItem;
+use crate::util::serialize_date;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -102,6 +105,27 @@ pub struct Response<T> {
 	pub response: T,
 	#[serde(rename = "_meta")]
 	pub meta: ResponseMeta,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct UserResponse {
+	pub id: String,
+	pub username: String,
+	#[serde(serialize_with = "serialize_date")]
+	pub created_at: NaiveDateTime,
+	#[serde(serialize_with = "serialize_date")]
+	pub updated_at: NaiveDateTime,
+}
+
+impl From<User> for UserResponse {
+	fn from(user: User) -> Self {
+		Self {
+			id: user.id,
+			username: user.username,
+			created_at: user.created_at,
+			updated_at: user.updated_at,
+		}
+	}
 }
 
 #[derive(Serialize, Debug, Clone)]

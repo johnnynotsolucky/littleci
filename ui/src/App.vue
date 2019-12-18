@@ -6,14 +6,6 @@
       clipped-left
     >
       <v-app-bar-nav-icon @click="drawer = !drawer" />
-      <!-- <v-img -->
-      <!--   alt="Vuetify Logo" -->
-      <!--   class="shrink mr-2" -->
-      <!--   contain -->
-      <!--   src="./assets/logo.svg" -->
-      <!--   transition="scale-transition" -->
-      <!--   width="40" -->
-      <!-- /> -->
       <span class="title ml-3 mr-5">LittleCI</span>
       <v-spacer />
     </v-app-bar>
@@ -91,6 +83,8 @@ export default class App extends Vue {
 
   get items() {
     return [
+      { icon: 'fas fa-home', text: 'Dashboard', to: '/' },
+      { divider: true },
       ...this.mappedRepositories,
       { icon: 'fas fa-tasks', text: 'Manage Repositories', to: '/manage/repositories' },
       { divider: true },
@@ -103,6 +97,7 @@ export default class App extends Vue {
   get mappedRepositories() {
     return this.state.repositories.map((repository) => ({
       text: repository.name,
+      icon: 'fas fa-dot-circle',
       to : `/repositories/${repository.slug}`,
     }))
   }

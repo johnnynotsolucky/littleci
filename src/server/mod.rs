@@ -5,7 +5,7 @@ use rocket::http::{ContentType, Method, RawStr, Status};
 use rocket::request::{self, FromRequest, Request};
 use rocket::response::status::Custom;
 use rocket::response::{Redirect, Responder};
-use rocket::{catch, catchers, get, post, put, delete, routes, Outcome, State};
+use rocket::{catch, catchers, delete, get, post, put, routes, Outcome, State};
 use rocket_contrib::json::Json;
 use secstr::SecStr;
 use serde_derive::{Deserialize, Serialize};
@@ -16,8 +16,9 @@ use std::io::Cursor;
 use std::path::PathBuf;
 
 use crate::config::{GitTrigger, Trigger};
-use crate::model::queues::Queues;
+use crate::model::queues::{JobSummary, Queues};
 use crate::model::repositories::{Repositories, Repository};
+use crate::model::users::{User, UserPassword, Users};
 use crate::queue::{ArbitraryData, QueueItem};
 use crate::AppState;
 
@@ -35,7 +36,7 @@ use git::GitReference;
 use github::GitHubPayload;
 use response::{
 	meta_for_queue_item, meta_for_repository, AppConfigResponse, ErrorResponse, RepositoryResponse,
-	Response, RouteMap, Routes,
+	Response, RouteMap, Routes, UserResponse,
 };
 use static_assets::{ApiDefinitionUi, StaticAssets};
 
@@ -207,7 +208,7 @@ pub fn notify_github(
 				break;
 			}
 			Trigger::Git(GitTrigger::Tag) => {
-				debug!("Trigger tag");
+				debug!("Matched tag trigger");
 				if let GitReference::Tag(_) = &payload.reference {
 					debug!("Matched tag trigger for repository {}", repository_name);
 					should_skip = false;
@@ -317,6 +318,124 @@ pub fn login(
 	}
 }
 
+#[get("/users")]
+pub fn users(
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<Json<Vec<UserResponse>>, ()> {
+	Ok(Json(
+		Users::new(state.config.clone())
+			.all()
+			.into_iter()
+			.map(|r| UserResponse::from(r))
+			.collect(),
+	))
+}
+
+#[delete("/users/<id>")]
+pub fn delete_user(
+	id: &RawStr,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<(), Custom<Json<ErrorResponse>>> {
+	let result = Users::new(state.config.clone()).delete_by_id(id.as_str());
+	match result {
+		Ok(_) => Ok(()),
+		Err(error) => {
+			error!("Error deleting user: {}", error);
+
+			Err(Custom(
+				Status::BadRequest,
+				Json(ErrorResponse::new(format!("Could not delete user").into())),
+			))
+		}
+	}
+}
+
+#[post("/users", format = "json", data = "<data>")]
+pub fn add_user(
+	data: Json<User>,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<Json<UserResponse>, Custom<Json<ErrorResponse>>> {
+	let data = data.into_inner();
+	let user = Users::new(state.config.clone()).create(data);
+	match user {
+		Ok(user) => Ok(Json(UserResponse::from(user))),
+		Err(error) => {
+			error!("Error adding user, {}", error);
+
+			Err(Custom(
+				Status::BadRequest,
+				Json(ErrorResponse::new(
+					format!("Could not create new repository. {}", error).into(),
+				)),
+			))
+		}
+	}
+}
+
+#[put("/users", format = "json", data = "<data>")]
+pub fn update_user(
+	data: Json<User>,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<Json<UserResponse>, Custom<Json<ErrorResponse>>> {
+	let data = data.into_inner();
+	let record = Users::new(state.config.clone()).save(data);
+	match record {
+		Ok(record) => Ok(Json(UserResponse::from(record))),
+		Err(error) => {
+			error!("Error saving user, {}", error);
+
+			Err(Custom(
+				Status::BadRequest,
+				Json(ErrorResponse::new(
+					format!("Could not update repository").into(),
+				)),
+			))
+		}
+	}
+}
+
+#[put("/users/password", format = "json", data = "<data>")]
+pub fn set_password(
+	data: Json<UserPassword>,
+	auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<(), Custom<Json<ErrorResponse>>> {
+	let user_payload: Option<UserPayload> = auth.into();
+
+	match user_payload {
+		Some(user_payload) => {
+			let data = data.into_inner();
+			let result =
+				Users::new(state.config.clone()).set_password(&user_payload.username, data);
+			match result {
+				Ok(()) => Ok(()),
+				Err(error) => {
+					error!("Error setting password, {}", error);
+
+					Err(Custom(
+						Status::BadRequest,
+						Json(ErrorResponse::new(format!("Could not set password").into())),
+					))
+				}
+			}
+		}
+		None => {
+			warn!("Cannot set password when auth is disabled");
+
+			Err(Custom(
+				Status::BadRequest,
+				Json(ErrorResponse::new(
+					format!("Cannot set password when auth is disabled").into(),
+				)),
+			))
+		}
+	}
+}
+
 #[get("/repositories/<repository>")]
 pub fn repository(
 	repository: &RawStr,
@@ -389,7 +508,7 @@ pub fn update_repository(
 					format!("Could not update repository").into(),
 				)),
 			))
-		},
+		}
 	}
 }
 
@@ -411,7 +530,22 @@ pub fn delete_repository(
 					format!("Could not delete repository").into(),
 				)),
 			))
-		},
+		}
+	}
+}
+
+#[get("/jobs")]
+pub fn all_jobs(
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<Json<Vec<JobSummary>>, String> {
+	let queues_model = Queues::new(state.config.clone());
+	match queues_model.all() {
+		Ok(jobs) => Ok(Json(jobs)),
+		Err(error) => {
+			error!("Unable to fetch jobs. {}", error);
+			Err("Unable to fetch jobs.".into())
+		}
 	}
 }
 
@@ -431,7 +565,7 @@ pub fn jobs(
 	};
 
 	let queues_model = Queues::new(state.config.clone());
-	match queues_model.all(&repository.id) {
+	match queues_model.all_for_repository(&repository.id) {
 		Ok(jobs) => Ok(Json(
 			jobs.into_iter()
 				.map(|job| Response {
@@ -652,10 +786,16 @@ pub fn start_server(app_state: AppState) -> Result<(), Error> {
 				add_repository,
 				update_repository,
 				delete_repository,
+				all_jobs,
 				jobs,
 				job,
 				log_output,
 				login,
+				users,
+				delete_user,
+				add_user,
+				update_user,
+				set_password,
 				get_static_asset,
 				// TODO ??? remove swagger UI
 				get_swagger_asset,

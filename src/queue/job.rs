@@ -63,13 +63,17 @@ impl JobRunner for CommandRunner {
 
 				loop {
 					// Refresh the repository in case it changed between builds
-					let repository = Repositories::new(queue_service.config.clone()).find_by_id(&queue_service.repository_id);
+					let repository = Repositories::new(queue_service.config.clone())
+						.find_by_id(&queue_service.repository_id);
 
 					let repository = match repository {
 						Some(repository) => repository,
 						None => {
-							error!("Could not find repository with ID {}", &queue_service.repository_id);
-							return
+							error!(
+								"Could not find repository with ID {}",
+								&queue_service.repository_id
+							);
+							return;
 						}
 					};
 
