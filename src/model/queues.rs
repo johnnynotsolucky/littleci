@@ -273,7 +273,7 @@ impl Queues {
 		let records = queue::table
 			.order(queue::dsl::created_at.desc())
 			.inner_join(repositories::table)
-			.limit(15)
+			.limit(30)
 			.load::<(QueueRecord, RepositoryRecord)>(&conn);
 
 		match records {

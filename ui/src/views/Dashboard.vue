@@ -18,7 +18,9 @@
           <v-data-table
             :headers="headers"
             :items="jobs"
-            :items-per-page="15"
+            :disable-pagination="true"
+            :hide-default-header="true"
+            :hide-default-footer="true"
             @click:row="onItemClick"
             v-if="jobs"
           >
