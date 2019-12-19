@@ -1,0 +1,28 @@
+FROM rustembedded/cross:arm-unknown-linux-gnueabihf
+
+ARG apti="apt-get install -y --no-install-recommends"
+
+RUN apt-get update -y
+
+# https://stackoverflow.com/a/28553171
+RUN $apti gcc-arm-linux-gnueabihf
+ARG TARGET=arm-linux-gnueabihf
+ENV CC=${TARGET}-gcc
+ENV LD=${TARGET}-ld
+
+# Install OpenSSL
+RUN git clone https://github.com/openssl/openssl
+RUN cd openssl && git checkout OpenSSL_1_1_1
+RUN cd openssl && ./Configure linux-armv4
+RUN cd openssl && make
+RUN cd openssl && make install
+
+# Install Sqlite3
+RUN $apti wget
+RUN wget https://sqlite.org/2019/sqlite-autoconf-3300100.tar.gz
+RUN tar xvzf sqlite-autoconf-3300100.tar.gz
+RUN cd sqlite-autoconf-3300100 && ./configure --host=arm-linux CC=${CC}
+RUN cd sqlite-autoconf-3300100 && make
+RUN cd sqlite-autoconf-3300100 && make install
+
+RUN $apti pkg-config

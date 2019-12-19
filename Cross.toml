@@ -2,7 +2,6 @@
 passthrough = [
     "RUST_BACKTRACE",
     "RUST_LOG",
-    "LITTLECI_BLAH",
 ]
 
 [target.x86_64-unknown-linux-gnu]
@@ -11,5 +10,5 @@ image = "littleci/cross:x86_64-unknown-linux-gnu"
 [target.x86_64-pc-windows-gnu]
 image = "littleci/cross:x86_64-pc-windows-gnu"
 
-[target.arm-unknown-linux-gnueabi]
-image = "littleci/cross:arm-unknown-linux-gnueabi"
+[target.arm-unknown-linux-gnueabihf]
+image = "littleci/cross:arm-unknown-linux-gnueabihf"

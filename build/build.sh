@@ -12,7 +12,7 @@ cargo +nightly fmt --all -- --check
 ./build/docker/build-images.sh
 
 cross build --target x86_64-unknown-linux-gnu --release
+cross build --target arm-unknown-linux-gnueabihf --release
 
 # TODO
-# cross build --target arm-unknown-linux-gnueabi --release
 # cross build --target x86_64-pc-windows-gnu --release
