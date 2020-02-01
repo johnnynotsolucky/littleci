@@ -5,11 +5,11 @@
 			dark
 		>
 			<v-toolbar-title>
-				Manage Repositories
+				Manage Users
 			</v-toolbar-title>
 			<v-spacer />
 			<v-toolbar-items>
-				<v-btn to="/manage/repositories/new">
+				<v-btn to="/manage/users/new">
 					New
 					<v-icon right small>fas fa-plus</v-icon>
 				</v-btn>
@@ -23,18 +23,12 @@
 				<v-layout child-flex>
 					<v-data-table
 						:headers="headers"
-						:items="state.repositories"
+						:items="users"
 						:items-per-page="15"
-						v-if="state.repositories"
+						v-if="users"
 					>
 						<template v-slot:item.action="{ item }">
-							<v-btn class="mr-2" text icon :to="`/repositories/${item.slug}`">
-								<v-icon small>fas fa-link</v-icon>
-							</v-btn>
-							<v-btn class="mr-2" text icon :to="`/manage/repositories/${item.slug}`">
-								<v-icon small>fas fa-edit</v-icon>
-							</v-btn>
-							<v-btn class="mr-2" text icon @click="deleteRepository(item.id)">
+							<v-btn class="mr-2" text icon @click="deleteUser(item.id)">
 								<v-icon small>fas fa-trash</v-icon>
 							</v-btn>
 						</template>
@@ -48,26 +42,27 @@
 <script lang="ts">
 import Vue from 'vue'
 import Component from 'vue-class-component'
-import {state} from '../store/state'
+import {state, User} from '../store/state'
 
 @Component({
-	name: 'ManageRepositories',
+	name: 'ManageUsers',
 })
-export default class ManageRepositories extends Vue {
+export default class ManageUsers extends Vue {
 	state = state
+	users: User[] = []
 
 	get headers(): any[] {
 		return [			{
-				text: 'Name',
+				text: 'Username',
 				align: 'left',
 				sortable: false,
-				value: 'name',
+				value: 'username',
 			},
 			{
-				text: 'Slug',
+				text: 'Created',
 				align: 'left',
 				sortable: false,
-				value: 'slug',
+				value: 'created_at',
 			},
 			{
 				sortable: false,
@@ -77,12 +72,13 @@ export default class ManageRepositories extends Vue {
 	}
 
 	async mounted() {
-		await this.state.getRepositories()
+		this.users = await this.state.getUsers()
 	}
 
-	async deleteRepository(id: string) {
-		await this.state.deleteRepository(id)
-		await this.state.getRepositories()
+	async deleteUser(id: string) {
+		await this.state.deleteUser(id)
+		this.users = await this.state.getUsers()
 	}
 }
 </script>
+

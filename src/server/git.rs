@@ -36,7 +36,6 @@ impl<'de> Deserialize<'de> for GitReference {
 		};
 
 		// TODO probably make sure the ref is valid and not some random shit
-
 		match reference {
 			Some(reference) => Ok(reference),
 			None => Err(Error::custom("Invalid ref")),

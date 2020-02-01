@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use serde_derive::{Deserialize, Serialize};
+use serde::{self, Deserialize, Serialize, Deserializer};
 use std::sync::Arc;
 
 #[allow(unused_imports)]
@@ -72,13 +72,41 @@ impl From<User> for UserRecord {
 
 #[derive(AsChangeset, Deserialize, Debug)]
 #[table_name = "users"]
-pub struct UserPassword {
+pub struct UpdateUserPassword {
+	#[serde(deserialize_with = "deserialize_password")]
 	pub password: Option<String>,
 }
 
-impl UserPassword {
-	pub fn as_none() -> Self {
-		Self { password: None }
+fn deserialize_password<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	let password = String::deserialize(deserializer)?;
+
+	// TODO Something something password rules
+	if password.len() > 0 {
+		Ok(Some(password))
+	} else {
+		Ok(None)
+	}
+
+}
+
+#[derive(Identifiable, Queryable, AsChangeset, Debug)]
+#[table_name = "users"]
+pub struct UpdateUserRecord {
+	pub id: String,
+	pub created_at: NaiveDateTime,
+	pub updated_at: NaiveDateTime,
+}
+
+impl From<User> for UpdateUserRecord {
+	fn from(user: User) -> Self {
+		Self {
+			id: user.id,
+			created_at: user.created_at,
+			updated_at: user.updated_at,
+		}
 	}
 }
 
@@ -149,10 +177,10 @@ impl Users {
 
 		let conn = self.establish_connection();
 
-		let user = UserRecord::from(user);
+		let user = UpdateUserRecord::from(user);
 
 		let result = diesel::update(users.filter(id.eq(&user.id)))
-			.set((&user, UserPassword::as_none()))
+			.set(&user)
 			.execute(&conn);
 
 		match result {
@@ -167,27 +195,28 @@ impl Users {
 	pub fn set_password(
 		&self,
 		user_username: &str,
-		mut user_password: UserPassword,
+		mut user_password: UpdateUserPassword,
 	) -> Result<(), String> {
 		use schema::users::dsl::*;
 
-		if user_password.password.is_some() {
-			let conn = self.establish_connection();
+		match user_password.password {
+			Some(new_password) => {
+				let conn = self.establish_connection();
 
-			let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
-			user_password.password =
-				Some(HashedPassword::new(&user_password.password.unwrap(), &salt).into());
+				let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
+				user_password.password =
+					Some(HashedPassword::new(&new_password, &salt).into());
 
-			let result = diesel::update(users.filter(username.eq(&user_username)))
-				.set(user_password)
-				.execute(&conn);
+				let result = diesel::update(users.filter(username.eq(&user_username)))
+					.set(user_password)
+					.execute(&conn);
 
-			match result {
-				Err(error) => Err(format!("Unable to save user. {}", error)),
-				_ => Ok(()),
-			}
-		} else {
-			Err("Password not set".into())
+				match result {
+					Err(error) => Err(format!("Unable to save user. {}", error)),
+					_ => Ok(()),
+				}
+			},
+			None => Err("Password not set".into()),
 		}
 	}
 
@@ -214,6 +243,19 @@ impl Users {
 		match result {
 			Err(error) => Err(format!("Unable to delete user. {}", error)),
 			_ => Ok(()),
+		}
+	}
+
+	pub fn find_by_id(&self, user_id: &str) -> Option<User> {
+		use schema::users::dsl::*;
+
+		let record = users
+			.filter(id.eq(user_id))
+			.first::<UserRecord>(&self.establish_connection());
+
+		match record {
+			Ok(record) => Some(User::from(record)),
+			Err(_) => None,
 		}
 	}
 

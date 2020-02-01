@@ -5,7 +5,7 @@
 			dark
 			>
 			<v-toolbar-title>
-				Add New Repository
+				Add New User
 			</v-toolbar-title>
 			<v-spacer />
 				<v-toolbar-items>
@@ -21,9 +21,14 @@
 			>
 			<v-row>
 				<v-col>
+					{{ error }}
+				</v-col>
+			</v-row>
+			<v-row>
+				<v-col>
 					<v-text-field
-						v-model="repositoryName"
-						label="Name"
+						v-model="username"
+						label="Username"
 						outlined
 						></v-text-field>
 				</v-col>
@@ -31,17 +36,9 @@
 			<v-row>
 				<v-col>
 					<v-text-field
-						v-model="runCommand"
-						label="Run Command"
-						outlined
-						></v-text-field>
-				</v-col>
-			</v-row>
-			<v-row>
-				<v-col>
-					<v-text-field
-						v-model="workingDirectory"
-						label="Working Directory"
+						v-model="password"
+						label="Password"
+						type="password"
 						outlined
 						></v-text-field>
 				</v-col>
@@ -56,23 +53,28 @@ import Component from 'vue-class-component'
 import {state} from '../store/state'
 
 @Component({
-	name: 'NewRepository',
+	name: 'NewUser',
 })
-export default class NewRepository extends Vue {
+export default class NewUser extends Vue {
 	state = state
 
-	repositoryName = ''
-	runCommand = ''
-	workingDirectory = ''
+	username = ''
+	password = ''
+
+	error = ''
 
 	async onSave() {
-		await this.state.saveNewRepository({
-			name: this.repositoryName,
-			run: this.runCommand,
-			working_dir: this.workingDirectory,
+	try {
+		await this.state.saveNewUser({
+			username: this.username,
+			password: this.password,
 		})
 
-		this.$router.replace('/manage/repositories')
+		this.$router.replace('/manage/users')
+	} catch (error) {
+		this.error = error
+	}
 	}
 }
 </script>
+

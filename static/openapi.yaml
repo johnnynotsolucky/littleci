@@ -257,15 +257,13 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/User'
       security:
         - user_auth: []
     put:
       tags:
         - users
-      summary: Update a new user
+      summary: Update a user
       operationId: updateUser
       requestBody:
         content:
@@ -278,9 +276,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/User'
       security:
         - user_auth: []
   /users/password:
@@ -300,6 +296,27 @@ paths:
       security:
         - user_auth: []
   '/users/{userId}':
+    get:
+      tags:
+        - users
+      summary: Get a user by ID
+      operationId: getUserById
+      parameters:
+        - name: userId
+          in: path
+          description: ID of user
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: successful operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+      security:
+        - user_auth: []
     delete:
       tags:
         - users

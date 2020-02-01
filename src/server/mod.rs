@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use crate::config::{GitTrigger, Trigger};
 use crate::model::queues::{JobSummary, Queues};
 use crate::model::repositories::{Repositories, Repository};
-use crate::model::users::{User, UserPassword, Users};
+use crate::model::users::{User, UpdateUserPassword, Users};
 use crate::queue::{ArbitraryData, QueueItem};
 use crate::AppState;
 
@@ -332,6 +332,28 @@ pub fn users(
 	))
 }
 
+#[get("/users/<id>")]
+pub fn get_user(
+	id: &RawStr,
+	_auth: AuthenticationPayload,
+	state: State<AppState>,
+) -> Result<Json<UserResponse>, Custom<Json<ErrorResponse>>> {
+	let id = id.as_str();
+	let result = Users::new(state.config.clone()).find_by_id(&id);
+	match result {
+		Some(user) => Ok(Json(UserResponse::from(user))),
+		None => {
+			warn!("Could not find user with ID {}", &id);
+			return Err(Custom(
+				Status::NotFound,
+				Json(ErrorResponse::new(
+					"User not found".into(),
+				)),
+			));
+		}
+	}
+}
+
 #[delete("/users/<id>")]
 pub fn delete_user(
 	id: &RawStr,
@@ -363,12 +385,12 @@ pub fn add_user(
 	match user {
 		Ok(user) => Ok(Json(UserResponse::from(user))),
 		Err(error) => {
-			error!("Error adding user, {}", error);
+			error!("Error adding user: {}", error);
 
 			Err(Custom(
 				Status::BadRequest,
 				Json(ErrorResponse::new(
-					format!("Could not create new repository. {}", error).into(),
+					"Could not create new user.".into(),
 				)),
 			))
 		}
@@ -391,7 +413,7 @@ pub fn update_user(
 			Err(Custom(
 				Status::BadRequest,
 				Json(ErrorResponse::new(
-					format!("Could not update repository").into(),
+					"Could not update user".into(),
 				)),
 			))
 		}
@@ -400,7 +422,7 @@ pub fn update_user(
 
 #[put("/users/password", format = "json", data = "<data>")]
 pub fn set_password(
-	data: Json<UserPassword>,
+	data: Json<UpdateUserPassword>,
 	auth: AuthenticationPayload,
 	state: State<AppState>,
 ) -> Result<(), Custom<Json<ErrorResponse>>> {
@@ -792,6 +814,7 @@ pub fn start_server(app_state: AppState) -> Result<(), Error> {
 				log_output,
 				login,
 				users,
+				get_user,
 				delete_user,
 				add_user,
 				update_user,
