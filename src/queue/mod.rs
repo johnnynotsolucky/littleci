@@ -122,10 +122,27 @@ pub struct QueueManager {
 
 impl QueueManager {
 	pub fn new(config: Arc<AppConfig>) -> Self {
+		// TODO What happens to jobs that were running but the service was killed before they could
+		// finish?
+
+		let mut queues = HashMap::new();
+
+		// Load all repositories to restart any jobs which were waiting in the queue.
+		let repositories_model = Repositories::new(config.clone());
+		for r in repositories_model.all().into_iter() {
+			let queue = QueueService::new(
+				r.name.clone(),
+				config.clone(),
+				Arc::new(r.id.clone()),
+			);
+			queue.notify();
+			queues.insert(r.slug, queue);
+		}
+
 		Self {
 			model: Arc::new(Queues::new(config.clone())),
 			config,
-			queues: Arc::new(RwLock::new(HashMap::new())),
+			queues: Arc::new(RwLock::new(queues)),
 		}
 	}
 
@@ -146,7 +163,7 @@ impl QueueManager {
 
 		// If it doesn't, create a new service for the repository
 		// XXX This seems a bit tacky, but I couldn't think of another way of doing this without
-		// createing a read lock and blocking a write lock if we needed to create a new service.
+		// creating a read lock and blocking a write lock if we needed to create a new service.
 		if service_item.is_none() {
 			match repositories_model.find_by_slug(&repository_slug) {
 				Some(repository) => {

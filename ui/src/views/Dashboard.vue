@@ -53,6 +53,10 @@ export default class Dashboard extends Vue {
 
 	async mounted() {
 		this.jobs = await this.state.getAllJobs()
+
+		this.interval = setInterval(async () => {
+				this.jobs = await this.state.getAllJobs()
+		}, 5000)
 	}
 
 	get headers(): any[] {

@@ -54,8 +54,8 @@ impl JobRunner for CommandRunner {
 			let processing_queue = queue_service.processing_queue.clone();
 
 			// Acquire a lock so that we can ensure that only a single thread per queue is spawned.
-			// When `notify` is called we can try acquire a lock, if unsuccessful we can safely
-			// assume that there is already a thread processing the queue.
+			// When `notify` is called we can try acquire a lock, if unsuccessful we can assume that
+			// there is already a thread processing the queue.
 			let lock = processing_queue.try_lock();
 
 			if lock.is_some() {
