@@ -211,19 +211,19 @@ export default class State {
 		}
 
 		// if (password) {
-			const response = await makeRequest(`${baseUrl}/users/password`, {
-				method: 'PUT',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${this.user.token}`,
-				},
-				body: JSON.stringify({password}),
-			})
+		const response = await makeRequest(`${baseUrl}/users/password`, {
+			method: 'PUT',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${this.user.token}`,
+			},
+			body: JSON.stringify({password}),
+		})
 
-			if (!response.ok) {
-				const responseObject: ErrorResponse = await response.json()
-				throw new Error(responseObject.message)
-			}
+		if (!response.ok) {
+			const responseObject: ErrorResponse = await response.json()
+			throw new Error(responseObject.message)
+		}
 		// }
 
 		return true

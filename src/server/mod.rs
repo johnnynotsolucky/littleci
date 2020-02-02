@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use crate::config::{GitTrigger, Trigger};
 use crate::model::queues::{JobSummary, Queues};
 use crate::model::repositories::{Repositories, Repository};
-use crate::model::users::{User, UpdateUserPassword, Users};
+use crate::model::users::{UpdateUserPassword, User, Users};
 use crate::queue::{ArbitraryData, QueueItem};
 use crate::AppState;
 
@@ -346,9 +346,7 @@ pub fn get_user(
 			warn!("Could not find user with ID {}", &id);
 			return Err(Custom(
 				Status::NotFound,
-				Json(ErrorResponse::new(
-					"User not found".into(),
-				)),
+				Json(ErrorResponse::new("User not found".into())),
 			));
 		}
 	}
@@ -389,9 +387,7 @@ pub fn add_user(
 
 			Err(Custom(
 				Status::BadRequest,
-				Json(ErrorResponse::new(
-					"Could not create new user.".into(),
-				)),
+				Json(ErrorResponse::new("Could not create new user.".into())),
 			))
 		}
 	}
@@ -412,9 +408,7 @@ pub fn update_user(
 
 			Err(Custom(
 				Status::BadRequest,
-				Json(ErrorResponse::new(
-					"Could not update user".into(),
-				)),
+				Json(ErrorResponse::new("Could not update user".into())),
 			))
 		}
 	}
@@ -540,9 +534,13 @@ pub fn delete_repository(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
 ) -> Result<(), Custom<Json<ErrorResponse>>> {
+	let repository_id = id.as_str();
 	let result = Repositories::new(state.config.clone()).delete_by_id(id.as_str());
 	match result {
-		Ok(_) => Ok(()),
+		Ok(_) => {
+			state.queue_manager.notify_deleted(&repository_id);
+			Ok(())
+		}
 		Err(error) => {
 			error!("Error deleting repository: {}", error);
 
@@ -783,7 +781,13 @@ pub fn create_cors_options() -> Cors {
 }
 
 pub fn start_server(app_state: AppState) -> Result<(), Error> {
-	// let tmp_user = crate::model::users::NewUserRecord { username: "admin".into(), password: "admin".into() };
+	//        let tmp_user_data = r#"
+	//            {
+	//                "username": "admin",
+	//                "password": "admin"
+	//            }
+	//        "#;
+	// let tmp_user: User = serde_json::from_str(tmp_user_data)?;
 	// let users = crate::model::users::Users::new(app_state.config.clone());
 	// users.create(tmp_user);
 

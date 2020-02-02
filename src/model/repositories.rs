@@ -37,7 +37,7 @@ pub struct Repository {
 	#[serde(default)]
 	pub webhooks: Vec<String>,
 	#[serde(skip)]
-	pub deleted: i32,
+	pub deleted: bool,
 	#[serde(
 		skip_deserializing,
 		default = "utc_now",
@@ -85,7 +85,7 @@ impl From<RepositoryRecord> for Repository {
 			variables,
 			triggers,
 			webhooks,
-			deleted: record.deleted,
+			deleted: record.deleted != 0,
 			created_at: record.created_at,
 			updated_at: record.updated_at,
 		}
@@ -134,7 +134,7 @@ impl From<Repository> for RepositoryRecord {
 				serde_json::to_string(&record.webhooks)
 					.expect("Unable to serialize webhooks to JSON".into()),
 			),
-			deleted: record.deleted,
+			deleted: record.deleted as i32,
 			created_at: record.created_at,
 			updated_at: record.updated_at,
 		}
@@ -327,7 +327,22 @@ impl Repositories {
 			.execute(&self.establish_connection());
 
 		match result {
-			Err(error) => Err(format!("Unable to save repository. {}", error)),
+			Err(error) => Err(format!("Unable to mark repository as deleted. {}", error)),
+			_ => Ok(()),
+		}
+	}
+
+	pub fn actually_delete_repository(&self, repository_id: &str) -> Result<(), String> {
+		use schema::repositories::dsl::*;
+
+		let result = diesel::delete(repositories.filter(id.eq(&repository_id)))
+			.execute(&self.establish_connection());
+
+		match result {
+			Err(error) => Err(format!(
+				"Unable to permanently delete repository. {}",
+				error
+			)),
 			_ => Ok(()),
 		}
 	}

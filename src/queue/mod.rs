@@ -130,11 +130,7 @@ impl QueueManager {
 		// Load all repositories to restart any jobs which were waiting in the queue.
 		let repositories_model = Repositories::new(config.clone());
 		for r in repositories_model.all().into_iter() {
-			let queue = QueueService::new(
-				r.name.clone(),
-				config.clone(),
-				Arc::new(r.id.clone()),
-			);
+			let queue = QueueService::new(config.clone(), Arc::new(r.id.clone()));
 			queue.notify();
 			queues.insert(r.slug, queue);
 		}
@@ -143,6 +139,22 @@ impl QueueManager {
 			model: Arc::new(Queues::new(config.clone())),
 			config,
 			queues: Arc::new(RwLock::new(queues)),
+		}
+	}
+
+	/// Preemptively removes the queue associated with the repository from the queue_manager.
+	pub fn notify_deleted(&self, repository_id: &str) {
+		let repository = Repositories::new(self.config.clone()).find_by_id(repository_id);
+		match repository {
+			Some(repository) => {
+				info!("Removing queue for repository {}", &repository_id);
+				let mut queues = self.queues.write();
+				queues.remove(&repository.slug);
+			}
+			None => warn!(
+				"Could not remove queue for repository {}. Not found.",
+				&repository_id
+			),
 		}
 	}
 
@@ -155,8 +167,16 @@ impl QueueManager {
 			let queues = self.queues.read();
 			if let Some(queue) = queues.get(repository_slug) {
 				if let Some(repository) = repositories_model.find_by_slug(&repository_slug) {
-					service_item =
-						Some((queue.clone(), QueueItem::new(&repository.id, data.clone())));
+					if !repository.deleted {
+						service_item =
+							Some((queue.clone(), QueueItem::new(&repository.id, data.clone())));
+					} else {
+						error!(
+							"Repository {} has been marked as deleted. Not adding job to queue.",
+							&repository.id
+						);
+						return Err(format_err!("Repository has been deleted."));
+					}
 				}
 			}
 		}
@@ -167,24 +187,24 @@ impl QueueManager {
 		if service_item.is_none() {
 			match repositories_model.find_by_slug(&repository_slug) {
 				Some(repository) => {
-					let repository_id = repository.id.clone();
-					let queue = QueueService::new(
-						repository.name.clone(),
-						self.config.clone(),
-						Arc::new(repository.id.clone()),
-					);
+					if !repository.deleted {
+						let repository_id = repository.id.clone();
+						let queue =
+							QueueService::new(self.config.clone(), Arc::new(repository.id.clone()));
 
-					let mut queues = self.queues.write();
-					queues.insert(repository_slug.clone().into(), queue.clone());
+						let mut queues = self.queues.write();
+						queues.insert(repository_slug.clone().into(), queue.clone());
 
-					service_item = Some((queue, QueueItem::new(&repository_id, data)));
+						service_item = Some((queue, QueueItem::new(&repository_id, data)));
+					} else {
+						error!(
+							"Repository {} has been marked as deleted. Not creating queue.",
+							&repository.id
+						);
+						return Err(format_err!("Repository has been deleted."));
+					}
 				}
-				None => {
-					return Err(format_err!(
-						"Could not find queue with name {}",
-						repository_slug
-					))
-				}
+				None => return Err(format_err!("Could not find repository {}", repository_slug)),
 			}
 		}
 
@@ -203,7 +223,6 @@ pub struct ProcessingQueue;
 
 #[derive(Debug, Clone)]
 pub struct QueueService {
-	pub name: Arc<String>,
 	pub config: Arc<AppConfig>,
 	pub repository_id: Arc<String>,
 	pub processing_queue: Arc<Mutex<ProcessingQueue>>,
@@ -211,9 +230,8 @@ pub struct QueueService {
 }
 
 impl QueueService {
-	fn new(name: String, config: Arc<AppConfig>, repository_id: Arc<String>) -> Self {
+	fn new(config: Arc<AppConfig>, repository_id: Arc<String>) -> Self {
 		Self {
-			name: Arc::new(name),
 			config,
 			repository_id,
 			processing_queue: Arc::new(Mutex::new(ProcessingQueue)),

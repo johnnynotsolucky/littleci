@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use serde::{self, Deserialize, Serialize, Deserializer};
+use serde::{self, Deserialize, Deserializer, Serialize};
 use std::sync::Arc;
 
 #[allow(unused_imports)]
@@ -89,7 +89,6 @@ where
 	} else {
 		Ok(None)
 	}
-
 }
 
 #[derive(Identifiable, Queryable, AsChangeset, Debug)]
@@ -204,8 +203,7 @@ impl Users {
 				let conn = self.establish_connection();
 
 				let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
-				user_password.password =
-					Some(HashedPassword::new(&new_password, &salt).into());
+				user_password.password = Some(HashedPassword::new(&new_password, &salt).into());
 
 				let result = diesel::update(users.filter(username.eq(&user_username)))
 					.set(user_password)
@@ -215,7 +213,7 @@ impl Users {
 					Err(error) => Err(format!("Unable to save user. {}", error)),
 					_ => Ok(()),
 				}
-			},
+			}
 			None => Err("Password not set".into()),
 		}
 	}
