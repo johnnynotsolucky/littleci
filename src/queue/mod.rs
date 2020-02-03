@@ -4,6 +4,7 @@ use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::{thread, time};
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -142,6 +143,31 @@ impl QueueManager {
 		}
 	}
 
+	pub fn shutdown(&self) {
+
+		info!("Shutting down job queues.");
+		for queue in self.queues.write().values_mut() {
+			queue.notify_shutdown();
+		}
+
+		loop {
+			info!("Waiting for running jobs to complete.");
+			let services_active: Vec<bool> = self.queues.read()
+				.values()
+				.map(|q| q.is_processing())
+				.filter(|r| *r == true)
+				.collect();
+
+			debug!("Running jobs remaining: {}.", services_active.len());
+			if services_active.len() == 0 {
+				break;
+			}
+
+			thread::sleep(time::Duration::from_millis(5000));
+		}
+		info!("All job queues have completed.");
+	}
+
 	/// Preemptively removes the queue associated with the repository from the queue_manager.
 	pub fn notify_deleted(&self, repository_id: &str) {
 		let repository = Repositories::new(self.config.clone()).find_by_id(repository_id);
@@ -222,11 +248,18 @@ impl QueueManager {
 pub struct ProcessingQueue;
 
 #[derive(Debug, Clone)]
+pub enum ServiceState {
+	Active,
+	Inactive,
+}
+
+#[derive(Debug, Clone)]
 pub struct QueueService {
 	pub config: Arc<AppConfig>,
 	pub repository_id: Arc<String>,
 	pub processing_queue: Arc<Mutex<ProcessingQueue>>,
 	pub runner: Arc<dyn JobRunner>,
+	pub service_state: Arc<Mutex<ServiceState>>,
 }
 
 impl QueueService {
@@ -236,10 +269,25 @@ impl QueueService {
 			repository_id,
 			processing_queue: Arc::new(Mutex::new(ProcessingQueue)),
 			runner: Arc::new(CommandRunner),
+			service_state: Arc::new(Mutex::new(ServiceState::Active)),
 		}
 	}
 
 	fn notify(&self) {
 		self.runner.process(self.clone());
+	}
+
+	fn is_processing(&self) -> bool {
+		self.processing_queue.try_lock().is_none()
+	}
+
+	fn notify_shutdown(&mut self) {
+		let service_state = self.service_state.try_lock();
+		match service_state {
+			Some(mut service_state) => {
+				*service_state = ServiceState::Inactive;
+			},
+			None => info!("Service state is transitioning."),
+		}
 	}
 }

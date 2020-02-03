@@ -15,7 +15,9 @@ use std::env::current_dir;
 use std::fmt::Write;
 use std::path::Path;
 use std::process;
+use parking_lot::Mutex;
 use std::sync::Arc;
+use ctrlc;
 
 mod config;
 mod model;
@@ -267,6 +269,21 @@ fn main() {
 
 				persisted_config.config_path = config_path.into();
 				let app_state = AppState::from(persisted_config.clone());
+
+				// let mut is_shutting_down = false;
+				let queue_manager = app_state.queue_manager.clone();
+				ctrlc::set_handler(move || {
+					// if !is_shutting_down {
+						info!("Gracefully shutting down qeueues.");
+						queue_manager.shutdown();
+						process::exit(1);
+						// is_shutting_down = true;
+					// } else {
+						// info!("Shutdown.");
+						// process::exit(1);
+					// }
+				}).expect("Error setting Ctrl-C handler");
+
 				if let Err(error) = start_server(app_state) {
 					eprintln!("Unable to start server. {}", error);
 				}

@@ -10,7 +10,7 @@ use std::thread;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
-use super::{ExecutionStatus, QueueItem, QueueService};
+use super::{ExecutionStatus, QueueItem, QueueService, ServiceState};
 use crate::model::queues::Queues;
 use crate::model::repositories::{Repositories, Repository};
 
@@ -66,145 +66,158 @@ impl JobRunner for CommandRunner {
 				);
 
 				loop {
-					// Refresh the repository in case it changed between builds
-					let repository = repository_model.find_by_id(&queue_service.repository_id);
-
-					let repository = match repository {
-						Some(repository) => {
-							if repository.deleted {
-								info!(
-									"Repository {} has been marked as deleted. Cleaning up.",
-									&repository.id,
-								);
-								// Clean up
-								match repository_model.actually_delete_repository(&repository.id) {
-									Ok(()) => {
-										info!("Repository {} permanently removed", &repository.id)
-									}
-									Err(error) => error!("{}", error),
-								}
-								break;
-							} else {
-								repository
-							}
-						}
-						None => {
-							error!(
-								"Could not find repository with ID {}",
-								&queue_service.repository_id
-							);
-							break;
-						}
+					// Check the service state in the loop. If jobs are being processed and
+					// shutdown is called, we need to make sure that the loop is terminated,
+					// otherwise it could keep starting jobs and we kill the thread mid-execution.
+					let service_state = {
+						let service_state = queue_service.service_state.lock();
+						let service_state = &*service_state;
+						service_state.clone()
 					};
+					match service_state {
+						ServiceState::Inactive => break,
+						ServiceState::Active => {
+							// Refresh the repository in case it changed between builds
+							let repository = repository_model.find_by_id(&queue_service.repository_id);
 
-					let queue_model = Queues::new(queue_service.config.clone());
-					let item = queue_model.next_queued(&repository.id);
-
-					match item {
-						Some(mut item) => {
-							info!("Starting execution {}", &item.id);
-							item.status = ExecutionStatus::Running;
-
-							if let Err(error) = queue_model.update_status(&item) {
-								error!("Unable to update status of job {}. {}", &item.id, error);
-							}
-
-							call_webhooks(&repository, &item);
-
-							let execution_dir =
-								format!("{}/jobs/{}", &queue_service.config.data_dir, &item.id);
-
-							match create_dir_all(&execution_dir) {
-									Ok(_) => {
-										let stdout_log_f = File::create(format!("{}/output.log", &execution_dir));
-
-										let stdout_log_f = match stdout_log_f {
-											Ok(stdio) => stdio,
-											_ => {
-												error!("Unable to create stdout log file");
-												return
-											},
-										};
-
-										let stderr_log_f = stdout_log_f.try_clone();
-
-										let stderr_log_f = match stderr_log_f {
-											Ok(stdio) => stdio,
-											_ => {
-												error!("Unable to create stderr log file");
-												return
-											},
-										};
-
-										let mut command = Command::new("/bin/sh");
-
-										for variable in repository.variables.iter() {
-											let (key, value) = variable;
-											command.env(key, value);
+							let repository = match repository {
+								Some(repository) => {
+									if repository.deleted {
+										info!(
+											"Repository {} has been marked as deleted. Cleaning up.",
+											&repository.id,
+										);
+										// Clean up
+										match repository_model.actually_delete_repository(&repository.id) {
+											Ok(()) => {
+												info!("Repository {} permanently removed", &repository.id)
+											}
+											Err(error) => error!("{}", error),
 										}
+										break;
+									} else {
+										repository
+									}
+								}
+								None => {
+									error!(
+										"Could not find repository with ID {}",
+										&queue_service.repository_id
+									);
+									break;
+								}
+							};
 
-										let data = &item.data.inner();
-										for (key, value) in data.iter() {
-											command.env(key, value);
-										}
+							let queue_model = Queues::new(queue_service.config.clone());
+							let item = queue_model.next_queued(&repository.id);
 
-										if let Some(working_dir) = &repository.working_dir {
-											command.current_dir(working_dir.to_owned());
-										};
+							match item {
+								Some(mut item) => {
+									info!("Starting execution {}", &item.id);
+									item.status = ExecutionStatus::Running;
 
-										command
-											.args(&["-c", &repository.run.to_string()])
-											.stdout(Stdio::from(stdout_log_f))
-											.stderr(Stdio::from(stderr_log_f));
+									if let Err(error) = queue_model.update_status(&item) {
+										error!("Unable to update status of job {}. {}", &item.id, error);
+									}
 
-								let status = command.status();
+									call_webhooks(&repository, &item);
 
-								match status {
-									Ok(status) => {
-										match status.code() {
-											Some(code) => {
-												match code {
-													code if code != SUCCESS_EXIT_CODE => {
-														item.status = ExecutionStatus::Failed(code);
-														if let Err(error) = queue_model.update_status(&item) {
-															error!("Unable to update status of job {}. {}", &item.id, error);
-														}
-														error!("Exection {} failed with code {}", &item.id, code)
-													},
+									let execution_dir =
+										format!("{}/jobs/{}", &queue_service.config.data_dir, &item.id);
+
+									match create_dir_all(&execution_dir) {
+											Ok(_) => {
+												let stdout_log_f = File::create(format!("{}/output.log", &execution_dir));
+
+												let stdout_log_f = match stdout_log_f {
+													Ok(stdio) => stdio,
 													_ => {
-														item.status = ExecutionStatus::Completed;
+														error!("Unable to create stdout log file");
+														return
+													},
+												};
+
+												let stderr_log_f = stdout_log_f.try_clone();
+
+												let stderr_log_f = match stderr_log_f {
+													Ok(stdio) => stdio,
+													_ => {
+														error!("Unable to create stderr log file");
+														return
+													},
+												};
+
+												let mut command = Command::new("/bin/sh");
+
+												for variable in repository.variables.iter() {
+													let (key, value) = variable;
+													command.env(key, value);
+												}
+
+												let data = &item.data.inner();
+												for (key, value) in data.iter() {
+													command.env(key, value);
+												}
+
+												if let Some(working_dir) = &repository.working_dir {
+													command.current_dir(working_dir.to_owned());
+												};
+
+												command
+													.args(&["-c", &repository.run.to_string()])
+													.stdout(Stdio::from(stdout_log_f))
+													.stderr(Stdio::from(stderr_log_f));
+
+										let status = command.status();
+
+										match status {
+											Ok(status) => {
+												match status.code() {
+													Some(code) => {
+														match code {
+															code if code != SUCCESS_EXIT_CODE => {
+																item.status = ExecutionStatus::Failed(code);
+																if let Err(error) = queue_model.update_status(&item) {
+																	error!("Unable to update status of job {}. {}", &item.id, error);
+																}
+																error!("Exection {} failed with code {}", &item.id, code)
+															},
+															_ => {
+																item.status = ExecutionStatus::Completed;
+																if let Err(error) = queue_model.update_status(&item) {
+																	error!("Unable to update status of item {}. {}", &item.id, error);
+																}
+																info!("Execution {} completed successfully", &item.id)
+															},
+														}
+													},
+													None => {
+														item.status = ExecutionStatus::Cancelled;
 														if let Err(error) = queue_model.update_status(&item) {
 															error!("Unable to update status of item {}. {}", &item.id, error);
 														}
-														info!("Execution {} completed successfully", &item.id)
+														info!("Exection {} terminated by signal", &item.id)
 													},
 												}
 											},
-											None => {
-												item.status = ExecutionStatus::Cancelled;
+											Err(error) => {
+												item.status = ExecutionStatus::Failed(-1);
 												if let Err(error) = queue_model.update_status(&item) {
 													error!("Unable to update status of item {}. {}", &item.id, error);
 												}
-												info!("Exection {} terminated by signal", &item.id)
+												error!("Execution {} failed. Unable to launch script. Error: {}", &item.id, error)
 											},
 										}
-									},
-									Err(error) => {
-										item.status = ExecutionStatus::Failed(-1);
-										if let Err(error) = queue_model.update_status(&item) {
-											error!("Unable to update status of item {}. {}", &item.id, error);
+											},
+											Err(_) => error!("Execution {} failed. Unable to create log dir. Please check permissions.", &item.id),
 										}
-										error!("Execution {} failed. Unable to launch script. Error: {}", &item.id, error)
-									},
-								}
-									},
-									Err(_) => error!("Execution {} failed. Unable to create log dir. Please check permissions.", &item.id),
-								}
 
-							call_webhooks(&repository, &item);
+									call_webhooks(&repository, &item);
+								}
+								// We've processed all the items in this queue and can exit
+								None => break,
+							}
 						}
-						// We've processed all the items in this queue and can exit
-						None => break,
 					}
 				}
 
