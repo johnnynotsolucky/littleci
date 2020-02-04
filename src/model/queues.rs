@@ -1,21 +1,19 @@
 use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 use diesel::{insert_into, update};
 use failure::{format_err, Error};
 use serde_derive::Serialize;
 use serde_json;
-use std::sync::Arc;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
 use schema::{queue, queue_logs};
 
-use crate::config::AppConfig;
 use crate::model::repositories::{Repository, RepositoryRecord};
 use crate::queue::{ExecutionStatus, QueueItem, QueueLogItem};
 use crate::util::serialize_date;
+use crate::DbConnectionManager;
 
 use super::schema;
 
@@ -161,28 +159,22 @@ struct NewQueueLogRecord {
 
 #[derive(Debug)]
 pub struct Queues {
-	config: Arc<AppConfig>,
+	connection_manager: DbConnectionManager,
 }
 
 impl Queues {
-	pub fn new(config: Arc<AppConfig>) -> Self {
+	pub fn new(connection_manager: DbConnectionManager) -> Self {
 		Self {
-			config: config.clone(),
+			connection_manager: connection_manager.clone(),
 		}
-	}
-
-	fn establish_connection(&self) -> SqliteConnection {
-		SqliteConnection::establish(&format!("{}/littleci.sqlite3", self.config.data_dir))
-			.expect("Unable to establish connection")
 	}
 
 	pub fn push(&self, item: &QueueItem) {
 		use schema::queue::dsl::*;
-		let conn = self.establish_connection();
 
 		let result = insert_into(queue)
 			.values(NewQueueRecord::from(item))
-			.execute(&conn);
+			.execute(&*self.connection_manager.get_write());
 
 		// TODO Don't fail silently here, rather fail in the calling function
 		match result {
@@ -203,7 +195,7 @@ impl Queues {
 			.filter(repository_id.eq(record_id))
 			.filter(status.eq(queued_status))
 			.order(created_at.asc())
-			.first::<QueueRecord>(&self.establish_connection());
+			.first::<QueueRecord>(&self.connection_manager.get_read());
 
 		match record {
 			Ok(record) => Some(QueueItem::from((record, Vec::new()))),
@@ -222,7 +214,7 @@ impl Queues {
 				exit_code.eq(new_exit_code),
 				updated_at.eq(Utc::now().naive_utc()),
 			))
-			.execute(&self.establish_connection());
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format_err!(
@@ -253,7 +245,7 @@ impl Queues {
 				created_at: Utc::now().naive_utc(),
 				queue_id: item.id.clone(),
 			})
-			.execute(&self.establish_connection());
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format_err!(
@@ -268,13 +260,11 @@ impl Queues {
 	pub fn all(&self) -> Result<Vec<JobSummary>, Error> {
 		use schema::repositories;
 
-		let conn = self.establish_connection();
-
 		let records = queue::table
 			.order(queue::dsl::created_at.desc())
 			.inner_join(repositories::table)
 			.limit(30)
-			.load::<(QueueRecord, RepositoryRecord)>(&conn);
+			.load::<(QueueRecord, RepositoryRecord)>(&self.connection_manager.get_read());
 
 		match records {
 			Ok(records) => Ok(records
@@ -294,7 +284,7 @@ impl Queues {
 		let records = queue
 			.filter(repository_id.eq(repository))
 			.order(created_at.desc())
-			.load::<QueueRecord>(&self.establish_connection());
+			.load::<QueueRecord>(&self.connection_manager.get_read());
 
 		match records {
 			Ok(records) => Ok(records
@@ -315,17 +305,16 @@ impl Queues {
 	pub fn job(&self, repository: &str, job_id: &str) -> Result<QueueItem, Error> {
 		use schema::queue::dsl::*;
 
-		let conn = &self.establish_connection();
-
 		let record = queue
 			.filter(id.eq(job_id))
 			.filter(repository_id.eq(repository))
 			.order(created_at.desc())
-			.first::<QueueRecord>(conn);
+			.first::<QueueRecord>(&self.connection_manager.get_read());
 
 		match record {
 			Ok(record) => {
-				let logs = QueueLogRecord::belonging_to(&record).load::<QueueLogRecord>(conn);
+				let logs = QueueLogRecord::belonging_to(&record)
+					.load::<QueueLogRecord>(&self.connection_manager.get_read());
 
 				let logs = match logs {
 					Ok(logs) => logs,

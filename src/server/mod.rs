@@ -34,10 +34,7 @@ mod static_assets;
 use auth::{authenticate_user, AuthenticationPayload, UserPayload};
 use git::GitReference;
 use github::GitHubPayload;
-use response::{
-	meta_for_queue_item, meta_for_repository, AppConfigResponse, ErrorResponse, RepositoryResponse,
-	Response, RouteMap, Routes, UserResponse,
-};
+use response::{AppConfigResponse, ErrorResponse, RepositoryResponse, Response, UserResponse};
 use static_assets::{ApiDefinitionUi, StaticAssets};
 
 pub struct SecretKey;
@@ -74,7 +71,8 @@ impl<'a, 'r> FromRequest<'a, 'r> for SecretKey {
 			.as_str();
 
 		let state = request.guard::<State<AppState>>().unwrap();
-		let repository = Repositories::new(state.config.clone()).find_by_slug(repository_slug);
+		let repository =
+			Repositories::new(state.connection_manager.clone()).find_by_slug(repository_slug);
 
 		if repository.is_none() {
 			return Outcome::Failure((Status::NotFound, SecretKeyError::Invalid));
@@ -114,13 +112,9 @@ fn notify_new_job(
 	repository: &str,
 	values: ArbitraryData,
 	state: &AppState,
-	routes: &RouteMap,
 ) -> Result<Response<QueueItem>, String> {
 	match state.queue_manager.push(repository, values) {
-		Ok(item) => Ok(Response {
-			meta: meta_for_queue_item(state.config.clone(), &routes, &item),
-			response: item,
-		}),
+		Ok(item) => Ok(Response { response: item }),
 		Err(error) => Err(format!("{}", error)),
 	}
 }
@@ -129,9 +123,8 @@ fn notify_job(
 	repository: &RawStr,
 	values: ArbitraryData,
 	state: &AppState,
-	routes: &RouteMap,
 ) -> Result<Json<Response<QueueItem>>, String> {
-	match notify_new_job(repository.as_str(), values, state, routes) {
+	match notify_new_job(repository.as_str(), values, state) {
 		Ok(job) => Ok(Json(job)),
 		Err(error) => Err(error),
 	}
@@ -142,13 +135,11 @@ pub fn notify(
 	repository: &RawStr,
 	_secret_key: SecretKey,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Response<QueueItem>>, String> {
 	notify_job(
 		repository,
 		ArbitraryData::new(HashMap::new()),
 		state.inner(),
-		routes.inner(),
 	)
 }
 
@@ -158,9 +149,8 @@ pub fn notify_with_data(
 	data: Json<ArbitraryData>,
 	_secret_key: SecretKey,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Response<QueueItem>>, String> {
-	notify_job(repository, data.into_inner(), state.inner(), routes.inner())
+	notify_job(repository, data.into_inner(), state.inner())
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -176,11 +166,11 @@ pub fn notify_github(
 	repository: &RawStr,
 	payload: GitHubPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<JobOrSkipped>, Custom<Json<ErrorResponse>>> {
 	let repository_name = repository.as_str();
 
-	let repository = Repositories::new(state.config.clone()).find_by_slug(repository_name);
+	let repository =
+		Repositories::new(state.connection_manager.clone()).find_by_slug(repository_name);
 	let repository = match repository {
 		Some(repository) => repository,
 		None => {
@@ -237,12 +227,7 @@ pub fn notify_github(
 		)))
 	} else {
 		debug!("Notifying new job for repository {}", repository_name);
-		match notify_new_job(
-			repository_name,
-			ArbitraryData::from(payload),
-			state.inner(),
-			routes.inner(),
-		) {
+		match notify_new_job(repository_name, ArbitraryData::from(payload), state.inner()) {
 			Ok(response) => Ok(Json(JobOrSkipped::Job(response))),
 			Err(error) => Err(Custom(
 				Status::InternalServerError,
@@ -258,16 +243,14 @@ pub fn notify_github(
 pub fn repositories(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Vec<Response<RepositoryResponse>>>, String> {
 	Ok(Json(
-		Repositories::new(state.config.clone())
+		Repositories::new(state.connection_manager.clone())
 			.all()
 			.into_iter()
 			.map(|r| {
 				let repository = RepositoryResponse::from(r);
 				Response {
-					meta: meta_for_repository(&state.config, &routes, &repository),
 					response: repository,
 				}
 			})
@@ -302,7 +285,12 @@ pub fn login(
 	state: State<AppState>,
 ) -> Result<Json<LoginResponse>, Custom<Json<ErrorResponse>>> {
 	let data = data.into_inner();
-	let payload = authenticate_user(state.config.clone(), &data.username, &data.password);
+	let payload = authenticate_user(
+		state.config.clone(),
+		state.connection_manager.clone(),
+		&data.username,
+		&data.password,
+	);
 	match payload {
 		Ok(payload) => {
 			let response = LoginResponse {
@@ -324,7 +312,7 @@ pub fn users(
 	state: State<AppState>,
 ) -> Result<Json<Vec<UserResponse>>, ()> {
 	Ok(Json(
-		Users::new(state.config.clone())
+		Users::new(state.connection_manager.clone())
 			.all()
 			.into_iter()
 			.map(|r| UserResponse::from(r))
@@ -339,7 +327,7 @@ pub fn get_user(
 	state: State<AppState>,
 ) -> Result<Json<UserResponse>, Custom<Json<ErrorResponse>>> {
 	let id = id.as_str();
-	let result = Users::new(state.config.clone()).find_by_id(&id);
+	let result = Users::new(state.connection_manager.clone()).find_by_id(&id);
 	match result {
 		Some(user) => Ok(Json(UserResponse::from(user))),
 		None => {
@@ -358,7 +346,7 @@ pub fn delete_user(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
 ) -> Result<(), Custom<Json<ErrorResponse>>> {
-	let result = Users::new(state.config.clone()).delete_by_id(id.as_str());
+	let result = Users::new(state.connection_manager.clone()).delete_by_id(id.as_str());
 	match result {
 		Ok(_) => Ok(()),
 		Err(error) => {
@@ -379,7 +367,7 @@ pub fn add_user(
 	state: State<AppState>,
 ) -> Result<Json<UserResponse>, Custom<Json<ErrorResponse>>> {
 	let data = data.into_inner();
-	let user = Users::new(state.config.clone()).create(data);
+	let user = Users::new(state.connection_manager.clone()).create(data);
 	match user {
 		Ok(user) => Ok(Json(UserResponse::from(user))),
 		Err(error) => {
@@ -400,7 +388,7 @@ pub fn update_user(
 	state: State<AppState>,
 ) -> Result<Json<UserResponse>, Custom<Json<ErrorResponse>>> {
 	let data = data.into_inner();
-	let record = Users::new(state.config.clone()).save(data);
+	let record = Users::new(state.connection_manager.clone()).save(data);
 	match record {
 		Ok(record) => Ok(Json(UserResponse::from(record))),
 		Err(error) => {
@@ -425,8 +413,8 @@ pub fn set_password(
 	match user_payload {
 		Some(user_payload) => {
 			let data = data.into_inner();
-			let result =
-				Users::new(state.config.clone()).set_password(&user_payload.username, data);
+			let result = Users::new(state.connection_manager.clone())
+				.set_password(&user_payload.username, data);
 			match result {
 				Ok(()) => Ok(()),
 				Err(error) => {
@@ -457,14 +445,13 @@ pub fn repository(
 	repository: &RawStr,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Response<RepositoryResponse>>, String> {
-	let record = Repositories::new(state.config.clone()).find_by_slug(repository.as_str());
+	let record =
+		Repositories::new(state.connection_manager.clone()).find_by_slug(repository.as_str());
 	match record {
 		Some(record) => {
 			let repository = RepositoryResponse::from(record);
 			Ok(Json(Response {
-				meta: meta_for_repository(&state.config, &routes, &repository),
 				response: repository,
 			}))
 		}
@@ -477,15 +464,13 @@ pub fn add_repository(
 	data: Json<Repository>,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Response<RepositoryResponse>>, Custom<Json<ErrorResponse>>> {
 	let data = data.into_inner();
-	let record = Repositories::new(state.config.clone()).create(data);
+	let record = Repositories::new(state.connection_manager.clone()).create(data);
 	match record {
 		Ok(record) => {
 			let repository = RepositoryResponse::from(record);
 			Ok(Json(Response {
-				meta: meta_for_repository(&state.config, &routes, &repository),
 				response: repository,
 			}))
 		}
@@ -503,15 +488,13 @@ pub fn update_repository(
 	data: Json<Repository>,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Response<RepositoryResponse>>, Custom<Json<ErrorResponse>>> {
 	let data = data.into_inner();
-	let record = Repositories::new(state.config.clone()).save(data);
+	let record = Repositories::new(state.connection_manager.clone()).save(data);
 	match record {
 		Ok(record) => {
 			let repository = RepositoryResponse::from(record);
 			Ok(Json(Response {
-				meta: meta_for_repository(&state.config, &routes, &repository),
 				response: repository,
 			}))
 		}
@@ -535,7 +518,7 @@ pub fn delete_repository(
 	state: State<AppState>,
 ) -> Result<(), Custom<Json<ErrorResponse>>> {
 	let repository_id = id.as_str();
-	let result = Repositories::new(state.config.clone()).delete_by_id(id.as_str());
+	let result = Repositories::new(state.connection_manager.clone()).delete_by_id(id.as_str());
 	match result {
 		Ok(_) => {
 			state.queue_manager.notify_deleted(&repository_id);
@@ -559,7 +542,7 @@ pub fn all_jobs(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
 ) -> Result<Json<Vec<JobSummary>>, String> {
-	let queues_model = Queues::new(state.config.clone());
+	let queues_model = Queues::new(state.connection_manager.clone());
 	match queues_model.all() {
 		Ok(jobs) => Ok(Json(jobs)),
 		Err(error) => {
@@ -574,24 +557,20 @@ pub fn jobs(
 	repository: &RawStr,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Vec<Response<QueueItem>>>, String> {
 	let repository = repository.as_str();
-	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
+	let record = Repositories::new(state.connection_manager.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
 		Some(repository) => repository,
 		None => return Err(format!("Repository `{}` does not exist", repository)),
 	};
 
-	let queues_model = Queues::new(state.config.clone());
+	let queues_model = Queues::new(state.connection_manager.clone());
 	match queues_model.all_for_repository(&repository.id) {
 		Ok(jobs) => Ok(Json(
 			jobs.into_iter()
-				.map(|job| Response {
-					meta: meta_for_queue_item(state.config.clone(), &routes, &job),
-					response: job,
-				})
+				.map(|job| Response { response: job })
 				.collect(),
 		)),
 		Err(error) => Err(format!(
@@ -609,7 +588,7 @@ pub fn log_output(
 	state: State<AppState>,
 ) -> Result<String, Custom<Json<ErrorResponse>>> {
 	let repository = repository.as_str();
-	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
+	let record = Repositories::new(state.connection_manager.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
 		Some(repository) => repository,
@@ -625,7 +604,7 @@ pub fn log_output(
 
 	let id = id.as_str();
 
-	let queues_model = Queues::new(state.config.clone());
+	let queues_model = Queues::new(state.connection_manager.clone());
 	match queues_model.job(&repository.id, &id) {
 		Ok(job) => {
 			let log_output = read_to_string(format!(
@@ -661,10 +640,9 @@ pub fn job(
 	id: &RawStr,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-	routes: State<RouteMap>,
 ) -> Result<Json<Response<QueueItem>>, Custom<Json<ErrorResponse>>> {
 	let repository = repository.as_str();
-	let record = Repositories::new(state.config.clone()).find_by_slug(repository);
+	let record = Repositories::new(state.connection_manager.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
 		Some(repository) => repository,
@@ -680,12 +658,9 @@ pub fn job(
 
 	let id = id.as_str();
 
-	let queues_model = Queues::new(state.config.clone());
+	let queues_model = Queues::new(state.connection_manager.clone());
 	match queues_model.job(&repository.id, &id) {
-		Ok(job) => Ok(Json(Response {
-			meta: meta_for_queue_item(state.config.clone(), &routes, &job),
-			response: job,
-		})),
+		Ok(job) => Ok(Json(Response { response: job })),
 		Err(_) => Err(Custom(
 			Status::NotFound,
 			Json(ErrorResponse::new(
@@ -781,14 +756,14 @@ pub fn create_cors_options() -> Cors {
 }
 
 pub fn start_server(app_state: AppState) -> Result<(), Error> {
-	//        let tmp_user_data = r#"
+	// let tmp_user_data = r#"
 	//            {
 	//                "username": "admin",
 	//                "password": "admin"
 	//            }
 	//        "#;
 	// let tmp_user: User = serde_json::from_str(tmp_user_data)?;
-	// let users = crate::model::users::Users::new(app_state.config.clone());
+	// let users = crate::model::users::Users::new(app_state.connection_manager.clone());
 	// users.create(tmp_user);
 
 	let http_config = Config::build(Environment::Production)
@@ -829,15 +804,12 @@ pub fn start_server(app_state: AppState) -> Result<(), Error> {
 				swagger,
 			];
 
-			let route_map: RouteMap = Routes::new(&routes).into();
-
 			// Rocket log formatting makes syslog output messy
 			env::set_var("ROCKET_CLI_COLORS", "off");
 
 			let server = rocket::custom(config)
 				.attach(create_cors_options())
 				.manage(app_state)
-				.manage(route_map)
 				.register(catchers![not_found_handler])
 				.mount("/", routes);
 

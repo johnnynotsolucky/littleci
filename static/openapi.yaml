@@ -512,8 +512,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExecutionLog'
-        _meta:
-          type: object
     JobSummary:
       type: object
       properties:
@@ -561,8 +559,6 @@ components:
         secret:
           type: string
           description: Secret to trigger jobs
-        _meta:
-          type: object
     Config:
       type: object
       properties:

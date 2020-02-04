@@ -1,18 +1,17 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 use serde_derive::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
 use schema::repositories;
 
-use crate::config::{AppConfig, Trigger};
+use crate::config::Trigger;
 use crate::util::{serialize_date, utc_now};
+use crate::DbConnectionManager;
 use crate::{kebab_case, HashedValue};
 
 use super::schema;
@@ -187,19 +186,12 @@ impl RepositorySecret {
 }
 
 pub struct Repositories {
-	config: Arc<AppConfig>,
+	connection_manager: DbConnectionManager,
 }
 
 impl Repositories {
-	pub fn new(config: Arc<AppConfig>) -> Self {
-		Self {
-			config: config.clone(),
-		}
-	}
-
-	fn establish_connection(&self) -> SqliteConnection {
-		SqliteConnection::establish(&format!("{}/littleci.sqlite3", self.config.data_dir))
-			.expect("Unable to establish connection".into())
+	pub fn new(connection_manager: DbConnectionManager) -> Self {
+		Self { connection_manager }
 	}
 
 	pub fn create(&self, repository: Repository) -> Result<Repository, String> {
@@ -209,8 +201,6 @@ impl Repositories {
 		if self.find_by_slug(&repository_slug).is_some() {
 			return Err(format!("Repository slug already exists"));
 		}
-
-		let conn = self.establish_connection();
 
 		let repository = NewRepositoryRecord::from(repository);
 
@@ -224,14 +214,14 @@ impl Repositories {
 				slug.eq(&repository_slug),
 				secret.eq(&repository_secret),
 			))
-			.execute(&conn);
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format!("Unable to save new repository. {}", error)),
 			_ => {
 				match repositories
 					.filter(id.eq(repository_id))
-					.first::<RepositoryRecord>(&conn)
+					.first::<RepositoryRecord>(&self.connection_manager.get_read())
 				{
 					Ok(record) => Ok(Repository::from(record)),
 					Err(error) => Err(format!("Unable to fetch saved repository. {}", error)),
@@ -250,8 +240,6 @@ impl Repositories {
 			}
 		}
 
-		let conn = self.establish_connection();
-
 		let mut repository = RepositoryRecord::from(repository);
 
 		repository.slug = kebab_case(&repository.name);
@@ -262,14 +250,14 @@ impl Repositories {
 				slug.eq(&kebab_case(&repository.name)),
 				RepositorySecret::as_none(),
 			))
-			.execute(&conn);
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format!("Unable to save repository. {}", error)),
 			_ => {
 				match repositories
 					.filter(id.eq(repository.id))
-					.first::<RepositoryRecord>(&conn)
+					.first::<RepositoryRecord>(&self.connection_manager.get_read())
 				{
 					Ok(record) => Ok(Repository::from(record)),
 					Err(error) => Err(format!("Unable to fetch saved repository. {}", error)),
@@ -283,7 +271,7 @@ impl Repositories {
 
 		repositories
 			.filter(deleted.eq(0))
-			.load::<RepositoryRecord>(&self.establish_connection())
+			.load::<RepositoryRecord>(&self.connection_manager.get_read())
 			.unwrap_or_else(|error| {
 				error!("Error fetching repositories. {}", error);
 				Vec::default()
@@ -298,7 +286,7 @@ impl Repositories {
 
 		let record = repositories
 			.filter(id.eq(repository_id))
-			.first::<RepositoryRecord>(&self.establish_connection());
+			.first::<RepositoryRecord>(&self.connection_manager.get_read());
 
 		match record {
 			Ok(record) => Some(Repository::from(record)),
@@ -311,7 +299,7 @@ impl Repositories {
 
 		let record = repositories
 			.filter(slug.eq(repository_slug))
-			.first::<RepositoryRecord>(&self.establish_connection());
+			.first::<RepositoryRecord>(&self.connection_manager.get_read());
 
 		match record {
 			Ok(record) => Some(Repository::from(record)),
@@ -324,7 +312,7 @@ impl Repositories {
 
 		let result = diesel::update(repositories.filter(id.eq(&repository_id)))
 			.set(deleted.eq(1))
-			.execute(&self.establish_connection());
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format!("Unable to mark repository as deleted. {}", error)),
@@ -336,7 +324,7 @@ impl Repositories {
 		use schema::repositories::dsl::*;
 
 		let result = diesel::delete(repositories.filter(id.eq(&repository_id)))
-			.execute(&self.establish_connection());
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format!(

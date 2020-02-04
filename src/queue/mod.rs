@@ -13,6 +13,7 @@ use crate::config::AppConfig;
 use crate::model::queues::Queues;
 use crate::model::repositories::Repositories;
 use crate::util::serialize_date;
+use crate::DbConnectionManager;
 
 mod job;
 use job::{CommandRunner, JobRunner};
@@ -117,34 +118,39 @@ pub struct QueueLogItem {
 #[derive(Debug, Clone)]
 pub struct QueueManager {
 	pub config: Arc<AppConfig>,
+	pub connection_manager: DbConnectionManager,
 	pub model: Arc<Queues>,
 	pub queues: Arc<RwLock<HashMap<String, QueueService>>>,
 }
 
 impl QueueManager {
-	pub fn new(config: Arc<AppConfig>) -> Self {
+	pub fn new(connection_manager: DbConnectionManager, config: Arc<AppConfig>) -> Self {
 		// TODO What happens to jobs that were running but the service was killed before they could
 		// finish?
 
 		let mut queues = HashMap::new();
 
 		// Load all repositories to restart any jobs which were waiting in the queue.
-		let repositories_model = Repositories::new(config.clone());
+		let repositories_model = Repositories::new(connection_manager.clone());
 		for r in repositories_model.all().into_iter() {
-			let queue = QueueService::new(config.clone(), Arc::new(r.id.clone()));
+			let queue = QueueService::new(
+				connection_manager.clone(),
+				config.clone(),
+				Arc::new(r.id.clone()),
+			);
 			queue.notify();
 			queues.insert(r.slug, queue);
 		}
 
 		Self {
-			model: Arc::new(Queues::new(config.clone())),
+			connection_manager: connection_manager.clone(),
 			config,
+			model: Arc::new(Queues::new(connection_manager.clone())),
 			queues: Arc::new(RwLock::new(queues)),
 		}
 	}
 
 	pub fn shutdown(&self) {
-
 		info!("Shutting down job queues.");
 		for queue in self.queues.write().values_mut() {
 			queue.notify_shutdown();
@@ -152,7 +158,9 @@ impl QueueManager {
 
 		loop {
 			info!("Waiting for running jobs to complete.");
-			let services_active: Vec<bool> = self.queues.read()
+			let services_active: Vec<bool> = self
+				.queues
+				.read()
 				.values()
 				.map(|q| q.is_processing())
 				.filter(|r| *r == true)
@@ -170,7 +178,8 @@ impl QueueManager {
 
 	/// Preemptively removes the queue associated with the repository from the queue_manager.
 	pub fn notify_deleted(&self, repository_id: &str) {
-		let repository = Repositories::new(self.config.clone()).find_by_id(repository_id);
+		let repository =
+			Repositories::new(self.connection_manager.clone()).find_by_id(repository_id);
 		match repository {
 			Some(repository) => {
 				info!("Removing queue for repository {}", &repository_id);
@@ -185,7 +194,7 @@ impl QueueManager {
 	}
 
 	pub fn push(&self, repository_slug: &str, data: ArbitraryData) -> Result<QueueItem, Error> {
-		let repositories_model = Repositories::new(self.config.clone());
+		let repositories_model = Repositories::new(self.connection_manager.clone());
 
 		let mut service_item: Option<(QueueService, QueueItem)> = None;
 		// First see if we the service already exists in the queues map.
@@ -215,8 +224,11 @@ impl QueueManager {
 				Some(repository) => {
 					if !repository.deleted {
 						let repository_id = repository.id.clone();
-						let queue =
-							QueueService::new(self.config.clone(), Arc::new(repository.id.clone()));
+						let queue = QueueService::new(
+							self.connection_manager.clone(),
+							self.config.clone(),
+							Arc::new(repository.id.clone()),
+						);
 
 						let mut queues = self.queues.write();
 						queues.insert(repository_slug.clone().into(), queue.clone());
@@ -256,6 +268,7 @@ pub enum ServiceState {
 #[derive(Debug, Clone)]
 pub struct QueueService {
 	pub config: Arc<AppConfig>,
+	pub connection_manager: DbConnectionManager,
 	pub repository_id: Arc<String>,
 	pub processing_queue: Arc<Mutex<ProcessingQueue>>,
 	pub runner: Arc<dyn JobRunner>,
@@ -263,9 +276,14 @@ pub struct QueueService {
 }
 
 impl QueueService {
-	fn new(config: Arc<AppConfig>, repository_id: Arc<String>) -> Self {
+	fn new(
+		connection_manager: DbConnectionManager,
+		config: Arc<AppConfig>,
+		repository_id: Arc<String>,
+	) -> Self {
 		Self {
 			config,
+			connection_manager,
 			repository_id,
 			processing_queue: Arc::new(Mutex::new(ProcessingQueue)),
 			runner: Arc::new(CommandRunner),
@@ -286,7 +304,7 @@ impl QueueService {
 		match service_state {
 			Some(mut service_state) => {
 				*service_state = ServiceState::Inactive;
-			},
+			}
 			None => info!("Service state is transitioning."),
 		}
 	}

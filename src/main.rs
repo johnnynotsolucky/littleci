@@ -5,19 +5,20 @@ extern crate diesel;
 
 use argon2::{self, Config, ThreadMode, Variant, Version};
 use clap::clap_app;
+use ctrlc;
 use failure::Error;
 use fern::colors::{Color, ColoredLevelConfig};
+use parking_lot::Mutex;
 use regex::Regex;
 use secstr::SecStr;
 use sha3::{Digest, Sha3_256};
 use std::convert::{From, Into};
 use std::env::current_dir;
+use std::fmt;
 use std::fmt::Write;
 use std::path::Path;
 use std::process;
-use parking_lot::Mutex;
 use std::sync::Arc;
-use ctrlc;
 
 mod config;
 mod model;
@@ -99,10 +100,185 @@ impl Into<String> for HashedPassword {
 	}
 }
 
+use diesel::connection::{Connection, SimpleConnection};
+use diesel::deserialize::{Queryable, QueryableByName};
+use diesel::query_builder::{AsQuery, QueryFragment, QueryId};
+use diesel::result::{ConnectionResult, QueryResult};
+use diesel::sql_types::HasSqlType;
+use diesel::sqlite::SqliteConnection;
+
+/// Source: https://stackoverflow.com/a/57717533
+pub struct WriteConnection(SqliteConnection);
+
+impl fmt::Debug for WriteConnection {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		fmt.debug_struct("DbConnection").finish()
+	}
+}
+
+impl SimpleConnection for WriteConnection {
+	fn batch_execute(&self, query: &str) -> QueryResult<()> {
+		self.0.batch_execute(query)
+	}
+}
+
+impl Connection for WriteConnection {
+	type Backend = <SqliteConnection as Connection>::Backend;
+	type TransactionManager = <SqliteConnection as Connection>::TransactionManager;
+
+	fn establish(database_url: &str) -> ConnectionResult<Self> {
+		let connection = SqliteConnection::establish(database_url);
+		match connection {
+			Ok(connection) => {
+				connection
+					.batch_execute(
+						r#"
+							PRAGMA synchronous = NORMAL;
+							PRAGMA journal_mode = WAL;
+							PRAGMA foreign_keys = ON;
+							PRAGMA busy_timeout = 60000;
+						"#,
+					)
+					.expect("Could not establish a new connection");
+				Ok(Self(connection))
+			}
+			Err(error) => Err(error),
+		}
+	}
+
+	fn execute(&self, query: &str) -> QueryResult<usize> {
+		self.0.execute(query)
+	}
+
+	fn query_by_index<T, U>(&self, source: T) -> QueryResult<Vec<U>>
+	where
+		T: AsQuery,
+		T::Query: QueryFragment<Self::Backend> + QueryId,
+		Self::Backend: HasSqlType<T::SqlType>,
+		U: Queryable<T::SqlType, Self::Backend>,
+	{
+		self.0.query_by_index(source)
+	}
+
+	fn query_by_name<T, U>(&self, source: &T) -> QueryResult<Vec<U>>
+	where
+		T: QueryFragment<Self::Backend> + QueryId,
+		U: QueryableByName<Self::Backend>,
+	{
+		self.0.query_by_name(source)
+	}
+
+	fn execute_returning_count<T>(&self, source: &T) -> QueryResult<usize>
+	where
+		T: QueryFragment<Self::Backend> + QueryId,
+	{
+		self.0.execute_returning_count(source)
+	}
+
+	fn transaction_manager(&self) -> &Self::TransactionManager {
+		self.0.transaction_manager()
+	}
+}
+
+pub struct ReadConnection(SqliteConnection);
+
+impl fmt::Debug for ReadConnection {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		fmt.debug_struct("DbConnection").finish()
+	}
+}
+
+impl SimpleConnection for ReadConnection {
+	fn batch_execute(&self, query: &str) -> QueryResult<()> {
+		self.0.batch_execute(query)
+	}
+}
+
+impl Connection for ReadConnection {
+	type Backend = <SqliteConnection as Connection>::Backend;
+	type TransactionManager = <SqliteConnection as Connection>::TransactionManager;
+
+	fn establish(database_url: &str) -> ConnectionResult<Self> {
+		let connection = SqliteConnection::establish(database_url);
+		match connection {
+			Ok(connection) => {
+				connection
+					.batch_execute(
+						r#"
+							PRAGMA foreign_keys = ON;
+							PRAGMA busy_timeout = 60000;
+						"#,
+					)
+					.expect("Could not establish a new connection");
+				Ok(Self(connection))
+			}
+			Err(error) => Err(error),
+		}
+	}
+
+	fn execute(&self, query: &str) -> QueryResult<usize> {
+		self.0.execute(query)
+	}
+
+	fn query_by_index<T, U>(&self, source: T) -> QueryResult<Vec<U>>
+	where
+		T: AsQuery,
+		T::Query: QueryFragment<Self::Backend> + QueryId,
+		Self::Backend: HasSqlType<T::SqlType>,
+		U: Queryable<T::SqlType, Self::Backend>,
+	{
+		self.0.query_by_index(source)
+	}
+
+	fn query_by_name<T, U>(&self, source: &T) -> QueryResult<Vec<U>>
+	where
+		T: QueryFragment<Self::Backend> + QueryId,
+		U: QueryableByName<Self::Backend>,
+	{
+		self.0.query_by_name(source)
+	}
+
+	fn execute_returning_count<T>(&self, source: &T) -> QueryResult<usize>
+	where
+		T: QueryFragment<Self::Backend> + QueryId,
+	{
+		self.0.execute_returning_count(source)
+	}
+
+	fn transaction_manager(&self) -> &Self::TransactionManager {
+		self.0.transaction_manager()
+	}
+}
+
+use diesel::r2d2::ConnectionManager;
+use diesel::r2d2::Pool;
+use diesel::r2d2::PooledConnection;
+use parking_lot::MutexGuard;
+
+pub type PooledDbConnection = PooledConnection<ConnectionManager<ReadConnection>>;
+pub type ReadPool = Pool<ConnectionManager<ReadConnection>>;
+
+#[derive(Debug, Clone)]
+pub struct DbConnectionManager {
+	write_connection: Arc<Mutex<WriteConnection>>,
+	read_pool: Arc<Mutex<ReadPool>>,
+}
+
+impl DbConnectionManager {
+	pub fn get_write(&self) -> MutexGuard<WriteConnection> {
+		self.write_connection.lock()
+	}
+
+	pub fn get_read(&self) -> PooledDbConnection {
+		self.read_pool.lock().get().unwrap()
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct AppState {
-	config: Arc<AppConfig>,
-	queue_manager: Arc<QueueManager>,
+	pub config: Arc<AppConfig>,
+	pub queue_manager: Arc<QueueManager>,
+	pub connection_manager: DbConnectionManager,
 }
 
 impl From<PersistedConfig> for AppState {
@@ -156,11 +332,31 @@ impl From<PersistedConfig> for AppState {
 			authentication_type: configuration.authentication_type,
 		};
 
-		let queue_manager = QueueManager::new(Arc::new(config.clone()));
+		let connection_manager = ConnectionManager::<ReadConnection>::new(&format!(
+			"{}/littleci.sqlite3",
+			config.data_dir
+		));
+		let pool = Pool::builder()
+			.max_size(5) // TODO Make configurable probs?
+			.build(connection_manager)
+			.expect("Unable to create connection pool");
+
+		let write_connection =
+			WriteConnection::establish(&format!("{}/littleci.sqlite3", config.data_dir,))
+				.expect("Unable to create write connection");
+
+		let connection_manager = DbConnectionManager {
+			write_connection: Arc::new(Mutex::new(write_connection)),
+			read_pool: Arc::new(Mutex::new(pool)),
+		};
+
+		let config = Arc::new(config);
+		let queue_manager = QueueManager::new(connection_manager.clone(), config.clone());
 
 		Self {
-			config: Arc::new(config),
+			config,
 			queue_manager: Arc::new(queue_manager),
+			connection_manager,
 		}
 	}
 }
@@ -274,15 +470,16 @@ fn main() {
 				let queue_manager = app_state.queue_manager.clone();
 				ctrlc::set_handler(move || {
 					// if !is_shutting_down {
-						info!("Gracefully shutting down qeueues.");
-						queue_manager.shutdown();
-						process::exit(1);
-						// is_shutting_down = true;
+					info!("Gracefully shutting down qeueues.");
+					queue_manager.shutdown();
+					process::exit(1);
+					// is_shutting_down = true;
 					// } else {
-						// info!("Shutdown.");
-						// process::exit(1);
+					// info!("Shutdown.");
+					// process::exit(1);
 					// }
-				}).expect("Error setting Ctrl-C handler");
+				})
+				.expect("Error setting Ctrl-C handler");
 
 				if let Err(error) = start_server(app_state) {
 					eprintln!("Unable to start server. {}", error);

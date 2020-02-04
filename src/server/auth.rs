@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::{AppConfig, AuthenticationType};
 use crate::model::users::Users;
+use crate::DbConnectionManager;
 use crate::{AppState, HashedPassword};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,13 +87,14 @@ impl UserPayload {
 
 pub fn authenticate_user(
 	config: Arc<AppConfig>,
+	connection_manager: DbConnectionManager,
 	username: &str,
 	password: &str,
 ) -> Result<UserPayload, String> {
 	match config.authentication_type {
 		AuthenticationType::NoAuthentication => Err("User authentication disabled".into()),
 		AuthenticationType::Simple => {
-			let users = Users::new(config);
+			let users = Users::new(connection_manager);
 			let user_record = users.find_by_username(username);
 			match user_record {
 				Some(user) => {

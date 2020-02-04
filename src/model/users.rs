@@ -1,16 +1,14 @@
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 use serde::{self, Deserialize, Deserializer, Serialize};
-use std::sync::Arc;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
 use schema::users;
 
-use crate::config::AppConfig;
 use crate::util::{serialize_date, utc_now};
+use crate::DbConnectionManager;
 use crate::HashedPassword;
 
 use super::schema;
@@ -127,19 +125,12 @@ impl From<User> for NewUserRecord {
 
 #[derive(Debug)]
 pub struct Users {
-	config: Arc<AppConfig>,
+	connection_manager: DbConnectionManager,
 }
 
 impl Users {
-	pub fn new(config: Arc<AppConfig>) -> Self {
-		Self {
-			config: config.clone(),
-		}
-	}
-
-	fn establish_connection(&self) -> SqliteConnection {
-		SqliteConnection::establish(&format!("{}/littleci.sqlite3", self.config.data_dir))
-			.expect("Unable to establish connection")
+	pub fn new(connection_manager: DbConnectionManager) -> Self {
+		Self { connection_manager }
 	}
 
 	pub fn create(&self, user: User) -> Result<User, String> {
@@ -149,8 +140,6 @@ impl Users {
 			return Err(format!("Username already exists"));
 		}
 
-		let conn = self.establish_connection();
-
 		let user_id = nanoid::custom(24, &crate::ALPHA_NUMERIC);
 		let mut user_record = NewUserRecord::from(user);
 
@@ -159,12 +148,15 @@ impl Users {
 
 		let result = diesel::insert_into(users)
 			.values((id.eq(&user_id), user_record))
-			.execute(&conn);
+			.execute(&*self.connection_manager.get_write());
 
 		// TODO Don't fail silently here, rather fail in the calling function
 		match result {
 			Err(error) => Err(format!("Unable to save new user. {}", error)),
-			_ => match users.filter(id.eq(user_id)).first::<UserRecord>(&conn) {
+			_ => match users
+				.filter(id.eq(user_id))
+				.first::<UserRecord>(&self.connection_manager.get_read())
+			{
 				Ok(record) => Ok(User::from(record)),
 				Err(error) => Err(format!("Unable to fetch saved user. {}", error)),
 			},
@@ -174,17 +166,18 @@ impl Users {
 	pub fn save(&self, user: User) -> Result<User, String> {
 		use schema::users::dsl::*;
 
-		let conn = self.establish_connection();
-
 		let user = UpdateUserRecord::from(user);
 
 		let result = diesel::update(users.filter(id.eq(&user.id)))
 			.set(&user)
-			.execute(&conn);
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format!("Unable to save user. {}", error)),
-			_ => match users.filter(id.eq(user.id)).first::<UserRecord>(&conn) {
+			_ => match users
+				.filter(id.eq(user.id))
+				.first::<UserRecord>(&self.connection_manager.get_read())
+			{
 				Ok(record) => Ok(User::from(record)),
 				Err(error) => Err(format!("Unable to fetch saved user. {}", error)),
 			},
@@ -200,14 +193,12 @@ impl Users {
 
 		match user_password.password {
 			Some(new_password) => {
-				let conn = self.establish_connection();
-
 				let salt = nanoid::custom(16, &nanoid::alphabet::SAFE);
 				user_password.password = Some(HashedPassword::new(&new_password, &salt).into());
 
 				let result = diesel::update(users.filter(username.eq(&user_username)))
 					.set(user_password)
-					.execute(&conn);
+					.execute(&*self.connection_manager.get_write());
 
 				match result {
 					Err(error) => Err(format!("Unable to save user. {}", error)),
@@ -222,7 +213,7 @@ impl Users {
 		use schema::users::dsl::*;
 
 		users
-			.load::<UserRecord>(&self.establish_connection())
+			.load::<UserRecord>(&self.connection_manager.get_read())
 			.unwrap_or_else(|error| {
 				error!("Error fetching users. {}", error);
 				Vec::default()
@@ -235,8 +226,8 @@ impl Users {
 	pub fn delete_by_id(&self, user_id: &str) -> Result<(), String> {
 		use schema::users::dsl::*;
 
-		let result =
-			diesel::delete(users.filter(id.eq(&user_id))).execute(&self.establish_connection());
+		let result = diesel::delete(users.filter(id.eq(&user_id)))
+			.execute(&*self.connection_manager.get_write());
 
 		match result {
 			Err(error) => Err(format!("Unable to delete user. {}", error)),
@@ -249,7 +240,7 @@ impl Users {
 
 		let record = users
 			.filter(id.eq(user_id))
-			.first::<UserRecord>(&self.establish_connection());
+			.first::<UserRecord>(&self.connection_manager.get_read());
 
 		match record {
 			Ok(record) => Some(User::from(record)),
@@ -262,7 +253,7 @@ impl Users {
 
 		let record = users
 			.filter(username.eq(user_name))
-			.first::<UserRecord>(&self.establish_connection());
+			.first::<UserRecord>(&self.connection_manager.get_read());
 
 		match record {
 			Ok(record) => Some(User::from(record)),
