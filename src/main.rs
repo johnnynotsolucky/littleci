@@ -467,17 +467,19 @@ fn main() {
 				let app_state = AppState::from(persisted_config.clone());
 
 				// let mut is_shutting_down = false;
+				let is_shutting_down = Mutex::new(false);
 				let queue_manager = app_state.queue_manager.clone();
 				ctrlc::set_handler(move || {
-					// if !is_shutting_down {
-					info!("Gracefully shutting down qeueues.");
-					queue_manager.shutdown();
-					process::exit(1);
-					// is_shutting_down = true;
-					// } else {
-					// info!("Shutdown.");
-					// process::exit(1);
-					// }
+					let mut is_shutting_down = is_shutting_down.lock();
+					if !*is_shutting_down {
+						*is_shutting_down = true;
+						info!("Gracefully shutting down qeueues.");
+						queue_manager.shutdown();
+						process::exit(0);
+					} else {
+						warn!("Forcing shut down.");
+						process::exit(1);
+					}
 				})
 				.expect("Error setting Ctrl-C handler");
 

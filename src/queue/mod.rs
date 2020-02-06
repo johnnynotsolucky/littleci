@@ -156,6 +156,8 @@ impl QueueManager {
 			queue.notify_shutdown();
 		}
 
+		// TODO do this in a thread or non-blocking somehow? Use a callback so that we can notify
+		// the calling function when the job count hits zero.
 		loop {
 			info!("Waiting for running jobs to complete.");
 			let services_active: Vec<bool> = self
