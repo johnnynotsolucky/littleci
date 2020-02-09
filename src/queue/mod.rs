@@ -125,9 +125,6 @@ pub struct QueueManager {
 
 impl QueueManager {
 	pub fn new(connection_manager: DbConnectionManager, config: Arc<AppConfig>) -> Self {
-		// TODO What happens to jobs that were running but the service was killed before they could
-		// finish?
-
 		let mut queues = HashMap::new();
 
 		// Load all repositories to restart any jobs which were waiting in the queue.
@@ -150,32 +147,32 @@ impl QueueManager {
 		}
 	}
 
-	pub fn shutdown(&self) {
+	pub fn shutdown<'a>(&self) {
 		info!("Shutting down job queues.");
 		for queue in self.queues.write().values_mut() {
 			queue.notify_shutdown();
 		}
 
-		// TODO do this in a thread or non-blocking somehow? Use a callback so that we can notify
-		// the calling function when the job count hits zero.
-		loop {
-			info!("Waiting for running jobs to complete.");
-			let services_active: Vec<bool> = self
-				.queues
-				.read()
-				.values()
-				.map(|q| q.is_processing())
-				.filter(|r| *r == true)
-				.collect();
+                // TODO do this in a thread or non-blocking somehow? Use a callback so that we can notify
+                // the calling function when the job count hits zero.
+                loop {
+                        info!("Waiting for running jobs to complete.");
+                        let services_active: Vec<bool> = self
+                                .queues
+                                .read()
+                                .values()
+                                .map(|q| q.is_processing())
+                                .filter(|r| *r == true)
+                                .collect();
 
-			debug!("Running jobs remaining: {}.", services_active.len());
-			if services_active.len() == 0 {
-				break;
-			}
+                        debug!("Running jobs remaining: {}.", services_active.len());
+                        if services_active.len() == 0 {
+                                break;
+                        }
 
-			thread::sleep(time::Duration::from_millis(5000));
-		}
-		info!("All job queues have completed.");
+                        thread::sleep(time::Duration::from_millis(5000));
+                }
+                info!("All job queues have completed.");
 	}
 
 	/// Preemptively removes the queue associated with the repository from the queue_manager.

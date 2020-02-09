@@ -19,6 +19,7 @@ use std::fmt::Write;
 use std::path::Path;
 use std::process;
 use std::sync::Arc;
+use std::thread;
 
 mod config;
 mod model;
@@ -466,16 +467,21 @@ fn main() {
 				persisted_config.config_path = config_path.into();
 				let app_state = AppState::from(persisted_config.clone());
 
-				// let mut is_shutting_down = false;
-				let is_shutting_down = Mutex::new(false);
-				let queue_manager = app_state.queue_manager.clone();
+				let is_shutting_down = Box::new(Mutex::new(false));
+				let queue_manager = Box::new(app_state.queue_manager.clone());
 				ctrlc::set_handler(move || {
-					let mut is_shutting_down = is_shutting_down.lock();
-					if !*is_shutting_down {
-						*is_shutting_down = true;
-						info!("Gracefully shutting down qeueues.");
-						queue_manager.shutdown();
-						process::exit(0);
+					let is_shutting_down = &mut is_shutting_down.lock();
+
+					// TODO Is there a better way to get a reference to queue_manager from inside
+					// the thread?
+					let queue_manager = queue_manager.clone();
+					if !**is_shutting_down {
+						**is_shutting_down = true;
+						thread::spawn(move || {
+							info!("Gracefully shutting down qeueues.");
+							&queue_manager.shutdown();
+							process::exit(0);
+						});
 					} else {
 						warn!("Forcing shut down.");
 						process::exit(1);
