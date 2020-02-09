@@ -29,7 +29,7 @@ impl<'a, 'r> FromRequest<'a, 'r> for AuthenticationPayload {
 	type Error = String;
 
 	fn from_request(request: &'a Request<'r>) -> request::Outcome<AuthenticationPayload, String> {
-		// check if auth type is simple
+		// Check configured auth type
 		let state = request.guard::<State<AppState>>().unwrap();
 		match state.config.authentication_type {
 			// Just pass through
