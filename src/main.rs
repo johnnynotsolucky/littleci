@@ -329,7 +329,6 @@ impl From<PersistedConfig> for AppState {
 			network_host: configuration.network_host.clone(),
 			site_url: configuration.site_url.unwrap_or(configuration.network_host),
 			port: configuration.port,
-			log_to_syslog: configuration.log_to_syslog,
 			authentication_type: configuration.authentication_type,
 		};
 
@@ -377,7 +376,7 @@ pub fn kebab_case(original: &str) -> String {
 	parts.join("-").to_lowercase()
 }
 
-fn setup_logger(log_to_syslog: bool) -> Result<(), Error> {
+fn setup_logger() -> Result<(), Error> {
 	let colors_line = ColoredLevelConfig::new()
 		.error(Color::Red)
 		.warn(Color::Yellow)
@@ -386,7 +385,7 @@ fn setup_logger(log_to_syslog: bool) -> Result<(), Error> {
 		.trace(Color::BrightBlack);
 	let colors_level = colors_line.clone().info(Color::Green);
 
-	let mut log_config = fern::Dispatch::new()
+	let log_config = fern::Dispatch::new()
 		.level(log::LevelFilter::Debug)
 		.level_for("launch_", log::LevelFilter::Warn)
 		.level_for("launch", log::LevelFilter::Warn)
@@ -411,36 +410,9 @@ fn setup_logger(log_to_syslog: bool) -> Result<(), Error> {
 				.chain(std::io::stdout()),
 		);
 
-	if cfg!(linux) {
-		if log_to_syslog {
-			log_config = configure_syslog(log_config);
-		}
-	}
-
 	log_config.apply()?;
 
 	Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn configure_syslog(log_config: fern::Dispatch) -> fern::Dispatch {
-	let syslog_formatter = syslog::Formatter3164 {
-		facility: syslog::Facility::LOG_USER,
-		hostname: None,
-		process: "littleci".to_owned(),
-		pid: process::id() as i32,
-	};
-
-	log_config.chain(
-		fern::Dispatch::new()
-			.level(log::LevelFilter::Info)
-			.chain(syslog::unix(syslog_formatter).unwrap()),
-	)
-}
-
-#[cfg(not(target_os = "linux"))]
-fn configure_syslog(log_config: fern::Dispatch) -> fern::Dispatch {
-	log_config
 }
 
 fn main() {
@@ -461,8 +433,7 @@ fn main() {
 		let config_path = matches.value_of("CONFIG_FILE").unwrap_or(working_dir);
 		match load_app_config(config_path) {
 			Ok(mut persisted_config) => {
-				setup_logger(persisted_config.log_to_syslog)
-					.expect("Failed to initialize the logger");
+				setup_logger().expect("Failed to initialize the logger");
 
 				persisted_config.config_path = config_path.into();
 				let app_state = AppState::from(persisted_config.clone());

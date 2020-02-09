@@ -77,11 +77,6 @@
 						></v-text-field>
 				</v-col>
 			</v-row>
-			<v-row>
-				<v-col>
-					<v-switch :value="state.config.log_to_syslog" class="ma-2" label="Log to syslog" readonly></v-switch>
-				</v-col>
-			</v-row>
 		</v-container>
 	</v-card>
 </template>

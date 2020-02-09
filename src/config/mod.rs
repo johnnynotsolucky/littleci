@@ -14,7 +14,6 @@ pub struct PersistedConfig {
 	pub site_url: Option<String>,
 	pub network_host: String,
 	pub port: u16,
-	pub log_to_syslog: bool,
 	pub authentication_type: AuthenticationType,
 }
 
@@ -27,7 +26,6 @@ pub struct AppConfig {
 	pub network_host: String,
 	pub site_url: String,
 	pub port: u16,
-	pub log_to_syslog: bool,
 	pub authentication_type: AuthenticationType,
 }
 

@@ -24,7 +24,6 @@ export interface Config {
 	network_host: string,
 	site_url: string,
 	port: string,
-	log_to_syslog: boolean,
 }
 
 export interface Repository {

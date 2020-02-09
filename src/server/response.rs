@@ -88,7 +88,6 @@ pub struct AppConfigResponse {
 	pub network_host: String,
 	pub site_url: String,
 	pub port: u16,
-	pub log_to_syslog: bool,
 }
 
 impl From<Arc<AppConfig>> for AppConfigResponse {
@@ -103,7 +102,6 @@ impl From<Arc<AppConfig>> for AppConfigResponse {
 			network_host: app_config.network_host.clone(),
 			site_url: app_config.site_url.clone(),
 			port: app_config.port.clone(),
-			log_to_syslog: app_config.log_to_syslog.clone(),
 		}
 	}
 }

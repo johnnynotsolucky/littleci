@@ -804,7 +804,7 @@ pub fn start_server(app_state: AppState) -> Result<(), Error> {
 				swagger,
 			];
 
-			// Rocket log formatting makes syslog output messy
+			// Rocket log formatting makes output messy
 			env::set_var("ROCKET_CLI_COLORS", "off");
 
 			let server = rocket::custom(config)

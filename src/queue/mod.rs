@@ -153,26 +153,26 @@ impl QueueManager {
 			queue.notify_shutdown();
 		}
 
-                // TODO do this in a thread or non-blocking somehow? Use a callback so that we can notify
-                // the calling function when the job count hits zero.
-                loop {
-                        info!("Waiting for running jobs to complete.");
-                        let services_active: Vec<bool> = self
-                                .queues
-                                .read()
-                                .values()
-                                .map(|q| q.is_processing())
-                                .filter(|r| *r == true)
-                                .collect();
+		// TODO do this in a thread or non-blocking somehow? Use a callback so that we can notify
+		// the calling function when the job count hits zero.
+		loop {
+			info!("Waiting for running jobs to complete.");
+			let services_active: Vec<bool> = self
+				.queues
+				.read()
+				.values()
+				.map(|q| q.is_processing())
+				.filter(|r| *r == true)
+				.collect();
 
-                        debug!("Running jobs remaining: {}.", services_active.len());
-                        if services_active.len() == 0 {
-                                break;
-                        }
+			debug!("Running jobs remaining: {}.", services_active.len());
+			if services_active.len() == 0 {
+				break;
+			}
 
-                        thread::sleep(time::Duration::from_millis(5000));
-                }
-                info!("All job queues have completed.");
+			thread::sleep(time::Duration::from_millis(5000));
+		}
+		info!("All job queues have completed.");
 	}
 
 	/// Preemptively removes the queue associated with the repository from the queue_manager.
