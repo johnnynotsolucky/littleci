@@ -1,8 +1,14 @@
 module.exports = {
-	"transpileDependencies": [
+	transpileDependencies: [
 		"vuetify"
 	],
-	"publicPath": process.env.NODE_ENV === "production"
+	publicPath: process.env.NODE_ENV === "production"
 		? "/ui/"
 		: "/",
+	pwa: {
+		workboxPluginMode:'InjectManifest',
+		workboxOptions: {
+			swSrc: './app/sw.js', /* Empty file. */
+		}
+	}
 }
