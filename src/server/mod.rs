@@ -1,10 +1,10 @@
 use base64::encode;
 use failure::{format_err, Error, Fail};
 use rocket::config::{Config, Environment};
-use rocket::http::{ContentType, Method, RawStr, Status};
+use rocket::http::{Method, RawStr, Status};
 use rocket::request::{self, FromRequest, Request};
 use rocket::response::status::Custom;
-use rocket::response::{Redirect, Responder};
+use rocket::response::Redirect;
 use rocket::{catch, catchers, delete, get, post, put, routes, Outcome, State};
 use rocket_contrib::json::Json;
 use secstr::SecStr;
@@ -12,7 +12,6 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::fs::read_to_string;
-use std::io::Cursor;
 use std::path::PathBuf;
 
 use crate::config::{GitTrigger, Trigger};
@@ -35,7 +34,7 @@ use auth::{authenticate_user, AuthenticationPayload, UserPayload};
 use git::GitReference;
 use github::GitHubPayload;
 use response::{AppConfigResponse, ErrorResponse, RepositoryResponse, Response, UserResponse};
-use static_assets::{ApiDefinitionUi, StaticAssets};
+use static_assets::{AssetType, Assets};
 
 pub struct SecretKey;
 
@@ -674,58 +673,43 @@ pub fn job(
 	}
 }
 
-#[derive(Debug)]
-pub struct StaticAsset(PathBuf, Option<String>);
-
-impl Responder<'static> for StaticAsset {
-	fn respond_to(self, _req: &Request) -> Result<rocket::response::Response<'static>, Status> {
-		if let Some(content) = self.1 {
-			let mut response = rocket::response::Response::build();
-			response.sized_body(Cursor::new(content));
-
-			if let Some(extension) = self.0.extension() {
-				if let Some(content_type) =
-					ContentType::from_extension(&extension.to_string_lossy())
-				{
-					response.header(content_type);
-				}
-			}
-
-			response.ok()
-		} else {
-			// TODO Handle properly
-			Err(Status::NotFound)
-		}
-	}
-}
-
 #[get("/static/<file..>")]
-pub fn get_static_asset(file: PathBuf) -> StaticAsset {
-	if let Some(asset) = StaticAssets::get(file.to_str().unwrap()) {
-		StaticAsset(
-			file,
-			Some(std::str::from_utf8(asset.as_ref()).unwrap().into()),
-		)
-	} else {
-		StaticAsset(file, None)
+pub fn get_static_asset(file: PathBuf) -> Assets {
+	Assets {
+		file_path: file,
+		asset_type: AssetType::StaticAssets,
 	}
 }
 
 #[get("/swagger/<file..>")]
-pub fn get_swagger_asset(file: PathBuf) -> StaticAsset {
-	if let Some(asset) = ApiDefinitionUi::get(file.to_str().unwrap()) {
-		StaticAsset(
-			file,
-			Some(std::str::from_utf8(asset.as_ref()).unwrap().into()),
-		)
-	} else {
-		StaticAsset(file, None)
+pub fn get_swagger_asset(file: PathBuf) -> Assets {
+	Assets {
+		file_path: file,
+		asset_type: AssetType::ApiDefinitionUi,
 	}
 }
 
 #[get("/swagger")]
 pub fn swagger() -> Redirect {
 	Redirect::to("/swagger/index.html")
+}
+
+// TODO Disable this if in debug mode too
+#[get("/ui/<file..>")]
+pub fn get_ui_asset(file: PathBuf) -> Assets {
+	Assets {
+		file_path: file,
+		asset_type: AssetType::UI,
+	}
+}
+
+#[get("/ui")]
+pub fn ui() -> Redirect {
+	if cfg!(debug_assertions) {
+		panic!("UI not available in debug mode")
+	} else {
+		Redirect::to("/ui/index.html")
+	}
 }
 
 #[catch(404)]
@@ -802,6 +786,8 @@ pub fn start_server(app_state: AppState) -> Result<(), Error> {
 				// TODO ??? remove swagger UI
 				get_swagger_asset,
 				swagger,
+				get_ui_asset,
+				ui,
 			];
 
 			// Rocket log formatting makes output messy
