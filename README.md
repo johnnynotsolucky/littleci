@@ -2,6 +2,13 @@
 
 **v0.0.0**
 
+## Setup
+
+```bash
+diesel migration run --database-url /path/to/littleci.sqlite3
+./target/release/littleci serve --config /path/to/littleci.json
+```
+
 ## Running
 
 ```bash
