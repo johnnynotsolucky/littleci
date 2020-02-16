@@ -22,7 +22,6 @@ export interface Config {
 	config_path: string,
 	data_dir: string,
 	network_host: string,
-	site_url: string,
 	port: string,
 }
 

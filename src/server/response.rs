@@ -86,7 +86,6 @@ pub struct AppConfigResponse {
 	pub working_dir: String,
 	pub data_dir: String,
 	pub network_host: String,
-	pub site_url: String,
 	pub port: u16,
 }
 
@@ -100,7 +99,6 @@ impl From<Arc<AppConfig>> for AppConfigResponse {
 			working_dir: app_config.working_dir.clone(),
 			data_dir: app_config.data_dir.clone(),
 			network_host: app_config.network_host.clone(),
-			site_url: app_config.site_url.clone(),
 			port: app_config.port.clone(),
 		}
 	}

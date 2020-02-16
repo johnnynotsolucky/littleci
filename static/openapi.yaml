@@ -571,9 +571,6 @@ components:
         network_host:
           type: string
           description: Network host which LittleCI binds to when started
-        site_url:
-          type: string
-          description: Base URL for LittleCI
         port:
           type: string
           description: Port LittleCI binds to

@@ -60,16 +60,6 @@
 			<v-row>
 				<v-col>
 					<v-text-field
-						:value="state.config.site_url"
-						label="Site URL"
-						outlined
-						readonly
-						></v-text-field>
-				</v-col>
-			</v-row>
-			<v-row>
-				<v-col>
-					<v-text-field
 						:value="state.config.port"
 						label="Port"
 						outlined

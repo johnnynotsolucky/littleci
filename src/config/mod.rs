@@ -3,7 +3,11 @@ use secstr::SecStr;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::read_to_string;
+use std::path::Path;
 use std::str;
+
+#[allow(unused_imports)]
+use log::{debug, error, info, warn};
 
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct PersistedConfig {
@@ -11,9 +15,9 @@ pub struct PersistedConfig {
 	#[serde(default)]
 	pub config_path: String,
 	pub data_dir: Option<String>,
-	pub site_url: Option<String>,
 	pub network_host: String,
 	pub port: u16,
+	#[serde(default)]
 	pub authentication_type: AuthenticationType,
 }
 
@@ -24,7 +28,6 @@ pub struct AppConfig {
 	pub working_dir: String,
 	pub data_dir: String,
 	pub network_host: String,
-	pub site_url: String,
 	pub port: u16,
 	pub authentication_type: AuthenticationType,
 }
@@ -68,8 +71,42 @@ impl Default for Trigger {
 }
 
 pub fn load_app_config(config_path: &str) -> Result<PersistedConfig, Error> {
-	let file = read_to_string(config_path)?;
-	let persisted_config: PersistedConfig = serde_json::from_str(&file).unwrap();
+	let path = Path::new(config_path);
+
+	// If config_path is a dir, either load littleci.json or create a default configuration file at
+	// config_path location
+	let persisted_config: PersistedConfig = if path.is_dir() {
+		let default_config_path = format!("{}/littleci.json", config_path);
+		let path = Path::new(&config_path);
+
+		// First try the littleci.json file if it exists
+		if path.is_file() {
+			let data = read_to_string(default_config_path.clone())?;
+			let mut persisted_config: PersistedConfig = serde_json::from_str(&data)?;
+			persisted_config.config_path = default_config_path;
+			persisted_config
+		} else {
+			let persisted_config = PersistedConfig {
+				secret: nanoid::custom(24, &crate::ALPHA_NUMERIC),
+				network_host: "0.0.0.0".into(),
+				port: 8000,
+				data_dir: Some(config_path.into()),
+				config_path: default_config_path,
+				..Default::default()
+			};
+
+			// TODO persist config to config_path
+
+			persisted_config
+		}
+	} else {
+		// Otherwise try read the file provided
+		let data = read_to_string(config_path)?;
+		let mut persisted_config: PersistedConfig = serde_json::from_str(&data)?;
+		persisted_config.config_path = config_path.into();
+		persisted_config
+	};
+
 	Ok(persisted_config)
 }
 

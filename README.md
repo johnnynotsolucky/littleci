@@ -5,7 +5,6 @@
 ## Setup
 
 ```bash
-diesel migration run --database-url /path/to/littleci.sqlite3
 ./target/release/littleci serve --config /path/to/littleci.json
 ```
 
@@ -20,10 +19,10 @@ littleci serve --config /path/to/littleci.json
 ```javascript
 {
   "secret": "<secret key>",
-  "site_url": "http://localhost:8000",
   "network_host": "0.0.0.0",
   "port": 8000,
   "authentication_type": "Simple"
+  "data_dir": "/path/to/littleci/data"
 }
 ```
 
