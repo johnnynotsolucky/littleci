@@ -609,7 +609,7 @@ pub fn log_output(
 	id: &RawStr,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-) -> Result<String, Custom<Json<ErrorResponse>>> {
+) -> Result<String, Custom<String>> {
 	let repository = repository.as_str();
 	let record = Repositories::new(state.connection_manager.clone()).find_by_slug(repository);
 	let repository = match record {
@@ -618,9 +618,7 @@ pub fn log_output(
 		None => {
 			return Err(Custom(
 				Status::NotFound,
-				Json(ErrorResponse::new(
-					format!("Repository `{}` does not exist", repository).into(),
-				)),
+				format!("Repository `{}` does not exist", repository).into(),
 			));
 		}
 	};
@@ -638,21 +636,17 @@ pub fn log_output(
 				Ok(log_output) => Ok(log_output),
 				Err(_) => Err(Custom(
 					Status::InternalServerError,
-					Json(ErrorResponse::new(
-						format!("Unable to read output file for job `{}`", &id).into(),
-					)),
+					format!("Unable to read output file for job `{}`", &id).into(),
 				)),
 			}
 		}
 		Err(_) => Err(Custom(
 			Status::NotFound,
-			Json(ErrorResponse::new(
-				format!(
-					"Couldn't find job `{}` for repository `{}`",
-					&id, &repository.slug
-				)
-				.into(),
-			)),
+			format!(
+				"Couldn't find job `{}` for repository `{}`",
+				&id, &repository.slug
+			)
+			.into(),
 		)),
 	}
 }
