@@ -2,6 +2,7 @@ use failure::Error;
 use secstr::SecStr;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::fs::read_to_string;
 use std::path::Path;
 use std::str;
@@ -77,9 +78,10 @@ pub fn load_app_config(config_path: &str) -> Result<PersistedConfig, Error> {
 	// config_path location
 	let persisted_config: PersistedConfig = if path.is_dir() {
 		let default_config_path = format!("{}/littleci.json", config_path);
-		let path = Path::new(&config_path);
+		let path = Path::new(&default_config_path);
 
 		// First try the littleci.json file if it exists
+		info!("{}", path.is_file());
 		if path.is_file() {
 			let data = read_to_string(default_config_path.clone())?;
 			let mut persisted_config: PersistedConfig = serde_json::from_str(&data)?;
@@ -87,15 +89,16 @@ pub fn load_app_config(config_path: &str) -> Result<PersistedConfig, Error> {
 			persisted_config
 		} else {
 			let persisted_config = PersistedConfig {
-				secret: nanoid::custom(24, &crate::ALPHA_NUMERIC),
+				secret: nanoid::custom(64, &crate::ALPHA_NUMERIC),
 				network_host: "0.0.0.0".into(),
 				port: 8000,
 				data_dir: Some(config_path.into()),
-				config_path: default_config_path,
+				config_path: default_config_path.clone(),
 				..Default::default()
 			};
 
-			// TODO persist config to config_path
+			let json = serde_json::to_string_pretty(&persisted_config)?;
+			fs::write(&default_config_path, json)?;
 
 			persisted_config
 		}

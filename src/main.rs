@@ -272,9 +272,7 @@ fn main() {
 	if let Some(matches) = command_matches.subcommand_matches("serve") {
 		let working_dir = current_dir().expect("Working directory is invalid");
 		let working_dir = working_dir.to_str().unwrap_or("./");
-		let config_path = matches
-                    .value_of("CONFIG_FILE")
-                    .unwrap_or(&working_dir);
+		let config_path = matches.value_of("CONFIG_FILE").unwrap_or(&working_dir);
 
 		match load_app_config(config_path) {
 			Ok(persisted_config) => {

@@ -122,10 +122,13 @@ fn notify_job(
 	repository: &RawStr,
 	values: ArbitraryData,
 	state: &AppState,
-) -> Result<Json<Response<QueueItem>>, String> {
+) -> Result<Json<Response<QueueItem>>, Custom<Json<ErrorResponse>>> {
 	match notify_new_job(repository.as_str(), values, state) {
 		Ok(job) => Ok(Json(job)),
-		Err(error) => Err(error),
+		Err(error) => Err(Custom(
+			Status::InternalServerError,
+			Json(ErrorResponse::new(error)),
+		)),
 	}
 }
 
@@ -134,7 +137,7 @@ pub fn notify(
 	repository: &RawStr,
 	_secret_key: SecretKey,
 	state: State<AppState>,
-) -> Result<Json<Response<QueueItem>>, String> {
+) -> Result<Json<Response<QueueItem>>, Custom<Json<ErrorResponse>>> {
 	notify_job(
 		repository,
 		ArbitraryData::new(HashMap::new()),
@@ -148,7 +151,7 @@ pub fn notify_with_data(
 	data: Json<ArbitraryData>,
 	_secret_key: SecretKey,
 	state: State<AppState>,
-) -> Result<Json<Response<QueueItem>>, String> {
+) -> Result<Json<Response<QueueItem>>, Custom<Json<ErrorResponse>>> {
 	notify_job(repository, data.into_inner(), state.inner())
 }
 
@@ -242,7 +245,7 @@ pub fn notify_github(
 pub fn repositories(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-) -> Result<Json<Vec<Response<RepositoryResponse>>>, String> {
+) -> Result<Json<Vec<Response<RepositoryResponse>>>, Custom<Json<ErrorResponse>>> {
 	Ok(Json(
 		Repositories::new(state.connection_manager.clone())
 			.all()
@@ -261,7 +264,7 @@ pub fn repositories(
 pub fn get_config(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-) -> Result<Json<AppConfigResponse>, String> {
+) -> Result<Json<AppConfigResponse>, ()> {
 	Ok(Json(AppConfigResponse::from(state.config.clone())))
 }
 
@@ -444,7 +447,7 @@ pub fn repository(
 	repository: &RawStr,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-) -> Result<Json<Response<RepositoryResponse>>, String> {
+) -> Result<Json<Response<RepositoryResponse>>, Custom<Json<ErrorResponse>>> {
 	let record =
 		Repositories::new(state.connection_manager.clone()).find_by_slug(repository.as_str());
 	match record {
@@ -454,7 +457,12 @@ pub fn repository(
 				response: repository,
 			}))
 		}
-		None => Err(format!("Repository `{}` does not exist", repository)),
+		None => Err(Custom(
+			Status::NotFound,
+			Json(ErrorResponse::new(
+				format!("Repository `{}` not found", repository).into(),
+			)),
+		)),
 	}
 }
 
@@ -540,13 +548,16 @@ pub fn delete_repository(
 pub fn all_jobs(
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-) -> Result<Json<Vec<JobSummary>>, String> {
+) -> Result<Json<Vec<JobSummary>>, Custom<Json<ErrorResponse>>> {
 	let queues_model = Queues::new(state.connection_manager.clone());
 	match queues_model.all() {
 		Ok(jobs) => Ok(Json(jobs)),
 		Err(error) => {
 			error!("Unable to fetch jobs. {}", error);
-			Err("Unable to fetch jobs.".into())
+			Err(Custom(
+				Status::NotFound,
+				Json(ErrorResponse::new("Unable to fetch jobs.".into())),
+			))
 		}
 	}
 }
@@ -556,13 +567,20 @@ pub fn jobs(
 	repository: &RawStr,
 	_auth: AuthenticationPayload,
 	state: State<AppState>,
-) -> Result<Json<Vec<Response<QueueItem>>>, String> {
+) -> Result<Json<Vec<Response<QueueItem>>>, Custom<Json<ErrorResponse>>> {
 	let repository = repository.as_str();
 	let record = Repositories::new(state.connection_manager.clone()).find_by_slug(repository);
 	let repository = match record {
 		// We just need the repository slug
 		Some(repository) => repository,
-		None => return Err(format!("Repository `{}` does not exist", repository)),
+		None => {
+			return Err(Custom(
+				Status::NotFound,
+				Json(ErrorResponse::new(
+					format!("Repository `{}` not found", repository).into(),
+				)),
+			))
+		}
 	};
 
 	let queues_model = Queues::new(state.connection_manager.clone());
@@ -572,9 +590,15 @@ pub fn jobs(
 				.map(|job| Response { response: job })
 				.collect(),
 		)),
-		Err(error) => Err(format!(
-			"Unable to fetch jobs for repository {}. {}",
-			repository.slug, error
+		Err(error) => Err(Custom(
+			Status::InternalServerError,
+			Json(ErrorResponse::new(
+				format!(
+					"Unable to fetch jobs for repository {}. {}",
+					repository.slug, error
+				)
+				.into(),
+			)),
 		)),
 	}
 }
