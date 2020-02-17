@@ -13,7 +13,7 @@ use log::{debug, error, info, warn};
 #[derive(Deserialize, Default, Serialize, Debug, Clone)]
 pub struct PersistedConfig {
 	pub secret: String,
-	#[serde(default)]
+	#[serde(default, skip_serializing)]
 	pub config_path: String,
 	pub data_dir: Option<String>,
 	pub network_host: String,
