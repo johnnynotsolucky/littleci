@@ -177,8 +177,8 @@ impl QueueManager {
 
 	/// Preemptively removes the queue associated with the repository from the queue_manager.
 	pub fn notify_deleted(&self, repository_id: &str) {
-		let repository = Repositories::new(self.connection_manager.clone())
-			.find_by_id(repository_id);
+		let repository =
+			Repositories::new(self.connection_manager.clone()).find_by_id(repository_id);
 		match repository {
 			Some(repository) => {
 				info!("Removing queue for repository {}", &repository_id);
@@ -189,7 +189,7 @@ impl QueueManager {
 					Some(queue_service) => {
 						info!("Notifying service to clean up repository.");
 						queue_service.notify();
-					},
+					}
 					None => {
 						warn!(
 							"Service for repository {} did not exist. Not cleaning up.",
