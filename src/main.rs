@@ -12,7 +12,6 @@ use ctrlc;
 use diesel::connection::Connection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use failure::Error;
-use fern::colors::{Color, ColoredLevelConfig};
 use parking_lot::Mutex;
 use regex::Regex;
 use secstr::SecStr;
@@ -215,14 +214,6 @@ pub fn kebab_case(original: &str) -> String {
 }
 
 fn setup_logger() -> Result<(), Error> {
-	let colors_line = ColoredLevelConfig::new()
-		.error(Color::Red)
-		.warn(Color::Yellow)
-		.info(Color::Green)
-		.debug(Color::White)
-		.trace(Color::BrightBlack);
-	let colors_level = colors_line.clone().info(Color::Green);
-
 	let log_config = fern::Dispatch::new()
 		.level(log::LevelFilter::Debug)
 		.level_for("launch_", log::LevelFilter::Warn)
@@ -234,14 +225,10 @@ fn setup_logger() -> Result<(), Error> {
 			fern::Dispatch::new()
 				.format(move |out, message, record| {
 					out.finish(format_args!(
-						"{color_line}[{date}][{target}][{level}{color_line}] {message}\x1B[0m",
-						color_line = format_args!(
-							"\x1B[{}m",
-							colors_line.get_color(&record.level()).to_fg_str()
-						),
+						"[{date}][{target}][{level}] {message}\x1B[0m",
 						date = chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
 						target = record.target(),
-						level = colors_level.color(record.level()),
+						level = record.level(),
 						message = message,
 					))
 				})

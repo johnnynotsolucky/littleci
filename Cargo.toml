@@ -44,4 +44,4 @@ features = ["json"]
 
 [dependencies.fern]
 version = "0.5"
-features = ["colored", "syslog-4"]
+features = ["syslog-4"]
