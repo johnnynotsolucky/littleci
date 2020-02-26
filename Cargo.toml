@@ -20,6 +20,8 @@ clap = "2.33"
 toml = "0.5"
 regex = "1.2"
 failure = "0.1"
+anyhow = "1.0"
+thiserror = "1.0"
 diesel = { version = "1.4.0", features = ["sqlite", "chrono", "r2d2"] }
 diesel_migrations = "1.4.0"
 libsqlite3-sys = { version = ">=0.8, <0.13", optional = true, features = ["bundled"] }
