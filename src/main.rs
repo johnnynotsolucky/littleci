@@ -32,6 +32,7 @@ mod util;
 
 use crate::config::{load_app_config, AppConfig, PersistedConfig};
 use crate::model::{DbConnectionManager, ReadConnection, WriteConnection};
+use crate::model::users::{Users, User};
 use crate::queue::QueueManager;
 use crate::server::start_server;
 
@@ -288,11 +289,28 @@ fn main() {
 				})
 				.expect("Error setting Ctrl-C handler");
 
+				create_default_user(&app_state);
+
 				if let Err(error) = start_server(app_state) {
 					eprintln!("Unable to start server. {}", error);
 				}
 			}
 			Err(error) => eprintln!("Error loading configuration. {}", error),
 		}
+	}
+}
+
+fn create_default_user(app_state: &AppState) {
+	let users_model = Users::new(app_state.connection_manager.clone());
+	if users_model.all().len() == 0 {
+		let default_user_json = r#"
+			{
+				"username": "admin",
+				"password": "littleci"
+			}
+		"#;
+		let default_user: User = serde_json::from_str(default_user_json).expect("Could not parse JSON user data");
+		users_model.create(default_user).expect("Could not create default user");
+		debug!("Default user created.");
 	}
 }

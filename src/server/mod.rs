@@ -758,16 +758,6 @@ pub fn create_cors_options() -> Cors {
 }
 
 pub fn start_server(app_state: AppState) -> Result<(), Error> {
-	// let tmp_user_data = r#"
-	//            {
-	//                "username": "admin",
-	//                "password": "admin"
-	//            }
-	//        "#;
-	// let tmp_user: User = serde_json::from_str(tmp_user_data)?;
-	// let users = crate::model::users::Users::new(app_state.connection_manager.clone());
-	// users.create(tmp_user);
-
 	let http_config = Config::build(Environment::Production)
 		// This should never use cookies though?
 		.secret_key(encode(&nanoid::generate(32)))

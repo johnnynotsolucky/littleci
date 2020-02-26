@@ -81,7 +81,6 @@ pub fn load_app_config(config_path: &str) -> Result<PersistedConfig, Error> {
 		let path = Path::new(&default_config_path);
 
 		// First try the littleci.json file if it exists
-		info!("{}", path.is_file());
 		if path.is_file() {
 			let data = read_to_string(default_config_path.clone())?;
 			let mut persisted_config: PersistedConfig = serde_json::from_str(&data)?;

@@ -1,6 +1,8 @@
 # LittleCI
 
-WIP **v0.0.0**
+WIP
+
+**v0.0.0**
 
 ## Requirements
 
