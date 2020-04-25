@@ -41,6 +41,10 @@ pub enum ExecutionStatus {
 	#[serde(rename = "completed")]
 	Completed,
 
+	/// Execution was skipped for some reason
+	#[serde(rename = "skipped")]
+	Skipped(String),
+
 	/// Unknown status
 	#[serde(rename = "unknown")]
 	Unknown,

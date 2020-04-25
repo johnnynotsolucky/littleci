@@ -40,6 +40,7 @@ impl From<QueueItem> for QueueItemData {
 const SUCCESS_EXIT_CODE: i32 = 0;
 
 pub trait JobRunner: Debug + Send + Sync {
+	fn preprocess(&self, queue_service: QueueService);
 	fn process(&self, queue_service: QueueService);
 }
 
@@ -47,6 +48,10 @@ pub trait JobRunner: Debug + Send + Sync {
 pub struct CommandRunner;
 
 impl JobRunner for CommandRunner {
+	fn preprocess(&self, queue_service: QueueService) {
+
+	}
+
 	// TODO break this up
 	fn process(&self, queue_service: QueueService) {
 		thread::spawn(move || {

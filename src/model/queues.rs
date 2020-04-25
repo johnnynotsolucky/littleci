@@ -52,7 +52,7 @@ impl From<(QueueRecord, RepositoryRecord)> for JobSummary {
 struct QueueRecord {
 	id: String,
 	status: String,
-	exit_code: Option<i32>,
+	reason: Option<String>,
 	data: String,
 	created_at: NaiveDateTime,
 	updated_at: NaiveDateTime,
@@ -65,32 +65,34 @@ struct QueueRecord {
 struct QueueLogRecord {
 	id: i32,
 	status: String,
-	exit_code: Option<i32>,
+	reason: Option<String>,
 	created_at: NaiveDateTime,
 	queue_id: String,
 }
 
-impl From<(&str, &Option<i32>)> for ExecutionStatus {
-	fn from(status: (&str, &Option<i32>)) -> ExecutionStatus {
+impl From<(&str, &Option<String>)> for ExecutionStatus {
+	fn from(status: (&str, &Option<String>)) -> ExecutionStatus {
 		match status {
 			("cancelled", None) => ExecutionStatus::Cancelled,
 			("queued", None) => ExecutionStatus::Queued,
 			("running", None) => ExecutionStatus::Running,
-			("failed", Some(exit_code)) => ExecutionStatus::Failed(*exit_code),
+			("failed", Some(reason)) => ExecutionStatus::Failed(reason.parse().unwrap_or(-1)),
 			("completed", None) => ExecutionStatus::Completed,
+			("skipped", Some(reason)) => ExecutionStatus::Skipped(reason.into()),
 			(_, _) => ExecutionStatus::Unknown,
 		}
 	}
 }
 
-impl Into<(String, Option<i32>)> for ExecutionStatus {
-	fn into(self) -> (String, Option<i32>) {
+impl Into<(String, Option<String>)> for ExecutionStatus {
+	fn into(self) -> (String, Option<String>) {
 		match self {
 			ExecutionStatus::Cancelled => ("cancelled".into(), None),
 			ExecutionStatus::Queued => ("queued".into(), None),
 			ExecutionStatus::Running => ("running".into(), None),
-			ExecutionStatus::Failed(exit_code) => ("failed".into(), Some(exit_code)),
+			ExecutionStatus::Failed(exit_code) => ("failed".into(), Some(format!("{}", exit_code))),
 			ExecutionStatus::Completed => ("completed".into(), None),
+			ExecutionStatus::Skipped(reason) => ("skipped".into(), Some(reason)),
 			ExecutionStatus::Unknown => ("unknown".into(), None),
 		}
 	}
@@ -102,7 +104,7 @@ impl From<(QueueRecord, Vec<QueueLogRecord>)> for QueueItem {
 		QueueItem {
 			id: record.id,
 			repository_id: record.repository_id,
-			status: ExecutionStatus::from((&*record.status, &record.exit_code)),
+			status: ExecutionStatus::from((&*record.status, &record.reason)),
 			data: serde_json::from_str(&record.data).unwrap(),
 			created_at: record.created_at,
 			updated_at: record.updated_at,
@@ -114,7 +116,7 @@ impl From<(QueueRecord, Vec<QueueLogRecord>)> for QueueItem {
 impl From<QueueLogRecord> for QueueLogItem {
 	fn from(record: QueueLogRecord) -> QueueLogItem {
 		QueueLogItem {
-			status: ExecutionStatus::from((&*record.status, &record.exit_code)),
+			status: ExecutionStatus::from((&*record.status, &record.reason)),
 			created_at: record.created_at,
 		}
 	}
@@ -125,7 +127,7 @@ impl From<QueueLogRecord> for QueueLogItem {
 struct NewQueueRecord {
 	id: String,
 	status: String,
-	exit_code: Option<i32>,
+	reason: Option<String>,
 	data: String,
 	created_at: NaiveDateTime,
 	updated_at: NaiveDateTime,
@@ -134,12 +136,12 @@ struct NewQueueRecord {
 
 impl From<&QueueItem> for NewQueueRecord {
 	fn from(item: &QueueItem) -> Self {
-		let (status, exit_code) = item.status.clone().into();
+		let (status, reason) = item.status.clone().into();
 
 		Self {
 			id: item.id.clone(),
 			status,
-			exit_code,
+			reason,
 			data: serde_json::to_string(&item.data).unwrap(),
 			created_at: item.created_at,
 			updated_at: item.updated_at,
@@ -152,7 +154,7 @@ impl From<&QueueItem> for NewQueueRecord {
 #[table_name = "queue_logs"]
 struct NewQueueLogRecord {
 	status: String,
-	exit_code: Option<i32>,
+	reason: Option<String>,
 	created_at: NaiveDateTime,
 	queue_id: String,
 }
@@ -206,12 +208,12 @@ impl Queues {
 	pub fn update_status(&self, item: &QueueItem) -> Result<(), Error> {
 		use schema::queue::dsl::*;
 
-		let (new_status, new_exit_code) = item.status.clone().into();
+		let (new_status, new_reason) = item.status.clone().into();
 
 		let result = update(queue.find(&item.id))
 			.set((
 				status.eq(new_status),
-				exit_code.eq(new_exit_code),
+				reason.eq(new_reason),
 				updated_at.eq(Utc::now().naive_utc()),
 			))
 			.execute(&*self.connection_manager.get_write());
@@ -236,12 +238,12 @@ impl Queues {
 	fn add_queue_log_item(&self, item: &QueueItem) -> Result<(), Error> {
 		use schema::queue_logs::dsl::*;
 
-		let (new_status, new_exit_code) = item.status.clone().into();
+		let (new_status, new_reason) = item.status.clone().into();
 
 		let result = insert_into(queue_logs)
 			.values(NewQueueLogRecord {
 				status: new_status,
-				exit_code: new_exit_code,
+				reason: new_reason,
 				created_at: Utc::now().naive_utc(),
 				queue_id: item.id.clone(),
 			})
